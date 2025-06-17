@@ -1,4 +1,5 @@
-# BNP Upper Bounds
+# BNP Dynamic Feature Allocation
+
 
 
 ## Test
