@@ -131,10 +131,10 @@ computePsurv(c(gamma,c,sigma))
 seed = 42
 set.seed(seed)
 
-N  = 200
-G  = 200 + 1
+N  =  500
+G  = 5000 + 1
 # M1 = M1init
-use_VS = TRUE
+use_VS = FALSE
 
 par_sig2X = set_par_invgamma(media = 0.1, var = 0.1)
 par_sig2A = set_par_invgamma(media = 1,   var = 1) # I can not learn this

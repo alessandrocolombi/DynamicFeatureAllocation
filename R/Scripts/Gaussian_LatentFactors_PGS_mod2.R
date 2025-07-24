@@ -76,7 +76,7 @@ M1true = 1
 c = 1/Psurv_true - 1
 gamma = M1true * Psurv_true
 
-sig2_A = 1e-5;sigma2_X = 0.001
+sig2_A = 0.0001; sigma2_X = 0.01
 
 
 # sim_data = sim_images_ale( img_base = zetas, Ti = Ttot, 
@@ -108,283 +108,284 @@ for(t in 1:Ttot){
 
 
 
+
 # Independent fit ---------------------------------------------------------
-
-seed = 42
-set.seed(seed)
-
-N = 100 # Number of particles
-c = 1/Psurv_true - 1
-gamma = M1true * Psurv_true
-sigma = 0
-sigma2_ker = 1e-5 # Variance base measure
-fit_smc = lapply(1:H, function(h){
-  SeqMonteCarlo(X,N,D,Ttot,
-                M1 = M1true,Psurv = Psurv_true,
-                sigma2_A = sigma2_ker,sigma2_X, 
-                mu0 = zetas[h,], 
-                use_VS = FALSE)
-})
-
-mean_all = lapply(fit_smc, function(x){x$Final_Est})
-for(h in 1:H){
-  par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
-  for(t in 1:Ttot){
-    res_t_vec = mean_all[[h]][t,]
-    res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
-    plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
-              horizontal = F, main = paste0("Gr. ",h,"; Est. T = ",t))
-  }
-}
-
-
-mean_all_sum = Reduce(`+`, mean_all)
-result = mean_all_sum
-par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
-for(t in 1:Ttot){
-  res_t_vec = result[t,]
-  res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
-  plot_img(res_t, center_value = NULL, col.lower = "grey95",col.upper = "grey10",
-           horizontal = F, main = paste0("Est. T = ",t))
-}
+# stop("Vecchio, non runnare")
+# seed = 42
+# set.seed(seed)
+# 
+# N = 10 # Number of particles
+# c = 1/Psurv_true - 1
+# gamma = M1true * Psurv_true
+# sigma = 0
+# sigma2_ker = 0.1 # Variance base measure
+# fit_smc = lapply(1:H, function(h){
+#   SeqMonteCarlo(X,N,D,Ttot,
+#                 M1 = M1true,Psurv = Psurv_true,
+#                 sigma2_A = sigma2_ker,sigma2_X, 
+#                 mu0 = zetas[h,], 
+#                 use_VS = FALSE)
+# })
+# 
+# mean_all = lapply(fit_smc, function(x){x$Final_Est})
+# for(h in 1:H){
+#   par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
+#   for(t in 1:Ttot){
+#     res_t_vec = mean_all[[h]][t,]
+#     res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
+#     plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+#               horizontal = F, main = paste0("Gr. ",h,"; Est. T = ",t))
+#   }
+# }
+# 
+# 
+# mean_all_sum = Reduce(`+`, mean_all)
+# result = mean_all_sum
+# par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
+# for(t in 1:Ttot){
+#   res_t_vec = result[t,]
+#   res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
+#   plot_img(res_t, center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+#            horizontal = F, main = paste0("Est. T = ",t))
+# }
 
 
 # PG with independent chains and fix number of centers -------------------------------------------
-
-seed = 42
-set.seed(seed)
-
-N  = 10
-G  = 4 + 1
-M1 = M1true
-use_VS = FALSE
-H  = 4 # number of centers
-sigma2_ker = 1e-5 # variance base measure
-
-par_sig2X = set_par_invgamma(media = 0.01, var = 0.1)
-par_sig2A = set_par_invgamma(media = 0.1,   var = 2)
-par_gamma = set_par_gamma(media = 0.25,    var = 0.1)
-par_c     = set_par_gamma(media = 1.1,    var = 1)
-
-# Gibbs sampler structures:
-
-# Beta process (gamma, c, sigma)
-BetaProcess_params = matrix(NA, nrow = G, ncol = 3)
-colnames(BetaProcess_params) = c("gamma","c","sigma")
-
-# Variance
-sigma2_X_mcmc = matrix(NA, nrow = G, ncol = 1)
-colnames(sigma2_X_mcmc) = c("sigma2_X")
-
-# Centers 
-zetas_mcmc = lapply(1:G, function(g){
-  matrix(NA, nrow = H, ncol = D)
-})
-
-# Auxiliaries
-var_prop <- M1_mcmc <- Psurv_mcmc <- rep(0,G)
-
-# Latent allocation process
-G_th = lapply(1:H, function(h){
-  list("Particles_PG" = vector("list", G))
-})
-# G_th[[h]] is the Particle Gibbs for the h-th chain (h=1,...,H)
-Ktot = rep(NA,G)
-
-
-# Initialization
-var_prop[1] = 0.1 # initial adaptive variance
-BetaProcess_params[1,1] = gamma # gamma at first iteration
-BetaProcess_params[1,2] = c # c at first iteration
-BetaProcess_params[,3]  = 0 # set sigma = 0 for all iterations
-M1_mcmc[1] = computeM1(BetaProcess_params[1,])
-Psurv_mcmc[1] = computePsurv(BetaProcess_params[1,])
-
-sigma2_X_mcmc[1,1] = 0.001 # initial value for sigma2_X
-
-zetas_mcmc[[1]] = zetas
-
-g = 1
-temp = lapply(1:H, function(h){
-  
-  Conditional_SeqMonteCarlo( X = X, N = N, D = D, Ttot = Ttot,
-                             mu0 = zetas_mcmc[[g]][h,],
-                             Bfix = rep(-1,Ttot), Particle_fix = NULL,  
-                             M1 = M1_mcmc[1],Psurv = Psurv_mcmc[1],
-                             sigma2_A = sigma2_ker, 
-                             sigma2_X = sigma2_X_mcmc[g,1],
-                             use_VS = use_VS)
-})
-for(h in 1:H){
-  # Save the sampled paths in the right spot
-  G_th[[h]]$Particles_PG[[g]] = temp[[h]]
-}
-
-
-
-g = 2
-UpdateSig2X = FALSE
-Updatec = FALSE; Updategamma = FALSE
-Updatezetas = FALSE; # IMPLEMENTARE L'AGGIORNAMENTO DEI CENTRI!
-pb = txtProgressBar(min = 2, max = G, initial = 2) 
-for(g in 2:G){
-  
-  # cat("\n ++++++ g = ",g," ++++++ \n")
-  setTxtProgressBar(pb,g)
-  
-  ## Assemble G_th for h=1,...,H to define G_t (for each t=1,...,Ttot)
-  mean_vec_1T = Reduce(`+`, lapply(G_th, function(x){x$Particles_PG[[g-1]]$mean_k}))
-  Zmat        = Reduce(cbind, lapply(G_th, function(x){x$Particles_PG[[g-1]]$Zmat_k})) 
-  Amat        = Reduce(rbind, lapply(G_th, function(x){x$Particles_PG[[g-1]]$Amat_k})) 
-  Ktot[g-1]   = ifelse(is.null(nrow(Amat)), 0, nrow(Amat))
-  
-  if(Ktot[g-1] == 0)
-    cat("\n Ktot[",g-1,"] è 0, speriamo vada tutto bene \n")
-  
-  
-  # Update sigma2_X
-  if(UpdateSig2X){
-    suff_stat_X = sum( apply(X-mean_vec_1T, 1, function(x){t(x)%*%x}) )
-    sigma2_X_mcmc[g,1] = r_fullcond_sigma2_X(par_sig2X[1], par_sig2X[2], D, Ttot, suff_stat_X)
-    # sigma2_XA_mcmc[g,1] = sigma2_X # set true values
-  }else{
-    sigma2_X_mcmc[g,1] = sigma2_X_mcmc[g-1,1]
-  }
-  
-  
-  # Update_gamma
-  if(Updategamma){
-    BetaProcess_params[g,1] = r_fullcond_gamma(par_gamma[1], par_gamma[2], 
-                                               Ktot[g-1], Ttot, 
-                                               BetaProcess_params[g-1,2], 
-                                               BetaProcess_params[g-1,3])
-    # BetaProcess_params[g,1] = gamma # set true values
-  }else{
-    BetaProcess_params[g,1] = BetaProcess_params[g-1,1]
-  }
-  
-  # Update c
-  if(Updatec){
-    suff_stat_Z = stat_suff_Z(Zmat = Zmat)
-    BetaProcess_params[g,2] = r_fullcond_c(BetaProcess_params[g-1,2], 
-                                           par_c[1], par_c[2],
-                                           gamma = BetaProcess_params[g,1], 
-                                           sigma = BetaProcess_params[g,3],
-                                           NumTrailTot = suff_stat_Z[1], 
-                                           NumFailTot  = suff_stat_Z[3], 
-                                           NnewTot = Ktot[g-1], Ttot = Ttot,
-                                           var_prop[g-1])
-    # BetaProcess_params[g,2] = c # set true values
-    # Update var_prop
-    var_prop[g] = 0.01
-  }else{
-    BetaProcess_params[g,2] = BetaProcess_params[g-1,2]
-    var_prop[g] = 0.01
-  }
-  
-  # Update M1 and Psurv
-  M1_mcmc[g]    = computeM1(BetaProcess_params[g,])
-  Psurv_mcmc[g] = computePsurv(BetaProcess_params[g,])
-  
-  # cat("\n M1 = ",M1_mcmc[g],"; Psurv = ",Psurv_mcmc[g],"\n")
-  
-  
-  # Update zetas
-  if(Updatezetas){
-    stop("Non l'ho ancora fatto :(")
-  }else{
-    zetas_mcmc[[g]] = zetas_mcmc[[g-1]]
-  }
-  # Run Conditional SMC
-  temp = lapply(1:H, function(h){
-    
-    Conditional_SeqMonteCarlo( X = X, N = N, D = D, Ttot = Ttot,
-                               mu0 = zetas_mcmc[[g]][h,],
-                               Bfix = G_th[[h]]$Particles_PG[[g-1]]$B_k,
-                               Particle_fix = G_th[[h]]$Particles_PG[[g-1]]$Path_k,  
-                               M1 = M1_mcmc[g],Psurv = Psurv_mcmc[g],
-                               sigma2_A = sigma2_ker, 
-                               sigma2_X = sigma2_X_mcmc[g,1],
-                               use_VS = use_VS)
-    
-  })
-  for(h in 1:H){
-    # Save the sampled paths in the right spot
-    G_th[[h]]$Particles_PG[[g]] = temp[[h]]
-  }
-
-}
-close(pb)
-
-# Inference sigma2_X and sigma2_A
-quantiles   = apply(sigma2_X_mcmc, 2, quantile, probs = c(0.0025,0.5,0.9975))
-dens_thetas = apply(sigma2_X_mcmc, 2, function(x){density(x)$y})
-
-par(mfrow = c(1,1), mar = c(4,4,2,2), bty = "l")
-plot(0,0,type = "n",  main = "Variances", xlab = "", ylab = "Dens.",
-     xlim = range(quantiles), ylim = c(0,max(dens_thetas)) )
-hist(sigma2_X_mcmc[,1], col = "darkgreen", nclass = "FD", freq = F, add = T)
-abline(v = apply(sigma2_X_mcmc, 2, median), col = c("darkgreen"), lwd = 2, lty = 3 )
-legend("topright", legend = colnames(sigma2_X_mcmc) ,col = c("darkgreen"), pch = 16)
-
-
-
-# Gamma
-summary(BetaProcess_params[,1])
-plot(BetaProcess_params[,1], type = "l", main = "gamma")
-
-# c
-summary(BetaProcess_params[,2])
-plot(BetaProcess_params[,2], type = "l", main = "c")
-
-par(mfrow = c(1,3), bty = "l")
-plot(M1_mcmc, type = "l", main = "M1")
-plot(Psurv_mcmc, type = "l", main = "Prob. surv.");
-plot(Ktot, type = "l", main = "Num. features")
-
-
-
-
-Kt_mcmc_h = lapply(G_th, function(x){
-  t(sapply(x$Particles_PG, function(x){apply(x$Zmat_k,1,sum)}))
-})
-# Kt_mcmc_h[[h]] is a GxT matrix such that Kt_mcmc_h[[h]][,t] is the traceplot of the number
-# of feature in the h-th group at time t
-Kt_mcmc = Reduce(`+`, Kt_mcmc_h)
-par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
-for(t in 1:Ttot){
-  plot(Kt_mcmc[,t], type = "l", main = paste0("K_",t))
-}
-# Kt_mcmc is a GxT matrix such that Kt_mcmc[,t] is the traceplot of the 
-# total number of feature across all groups at time t
-
-
-# Final estimated filtered density in each group
-burnin = (G-1)/2
-filt_dens_h = lapply(G_th, function(x){
-  result <- Reduce(`+`, lapply(x$Particles_PG[(G-burnin+1):(G)], function(xx){xx$mean_k}) )
-  result = result / length((G-burnin+1):(G))
-})
-
-for(h in 1:H){
-  par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
-  for(t in 1:Ttot){
-    res_t_vec = filt_dens_h[[h]][t,]
-    res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
-    plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
-              horizontal = F, main = paste0("Gr. ",h,"; Est. T = ",t))
-  }
-}
-
-# Final estimated filtered density 
-filt_dens = Reduce(`+`, filt_dens_h )
-par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
-for(t in 1:Ttot){
-  res_t_vec = filt_dens[t,]
-  res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
-  plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
-            horizontal = F, main = paste0("Est. T = ",t))
-}
+# stop("Vecchio, non runnare")
+# seed = 42
+# set.seed(seed)
+# 
+# N  = 10
+# G  = 4 + 1
+# M1 = M1true
+# use_VS = FALSE
+# H  = 4 # number of centers
+# sigma2_ker = 1e-5 # variance base measure
+# 
+# par_sig2X = set_par_invgamma(media = 0.01, var = 0.1)
+# par_sig2A = set_par_invgamma(media = 0.1,   var = 2)
+# par_gamma = set_par_gamma(media = 0.25,    var = 0.1)
+# par_c     = set_par_gamma(media = 1.1,    var = 1)
+# 
+# # Gibbs sampler structures:
+# 
+# # Beta process (gamma, c, sigma)
+# BetaProcess_params = matrix(NA, nrow = G, ncol = 3)
+# colnames(BetaProcess_params) = c("gamma","c","sigma")
+# 
+# # Variance
+# sigma2_X_mcmc = matrix(NA, nrow = G, ncol = 1)
+# colnames(sigma2_X_mcmc) = c("sigma2_X")
+# 
+# # Centers 
+# zetas_mcmc = lapply(1:G, function(g){
+#   matrix(NA, nrow = H, ncol = D)
+# })
+# 
+# # Auxiliaries
+# var_prop <- M1_mcmc <- Psurv_mcmc <- rep(0,G)
+# 
+# # Latent allocation process
+# G_th = lapply(1:H, function(h){
+#   list("Particles_PG" = vector("list", G))
+# })
+# # G_th[[h]] is the Particle Gibbs for the h-th chain (h=1,...,H)
+# Ktot = rep(NA,G)
+# 
+# 
+# # Initialization
+# var_prop[1] = 0.1 # initial adaptive variance
+# BetaProcess_params[1,1] = gamma # gamma at first iteration
+# BetaProcess_params[1,2] = c # c at first iteration
+# BetaProcess_params[,3]  = 0 # set sigma = 0 for all iterations
+# M1_mcmc[1] = computeM1(BetaProcess_params[1,])
+# Psurv_mcmc[1] = computePsurv(BetaProcess_params[1,])
+# 
+# sigma2_X_mcmc[1,1] = 0.001 # initial value for sigma2_X
+# 
+# zetas_mcmc[[1]] = zetas
+# 
+# g = 1
+# temp = lapply(1:H, function(h){
+#   
+#   Conditional_SeqMonteCarlo( X = X, N = N, D = D, Ttot = Ttot,
+#                              mu0 = zetas_mcmc[[g]][h,],
+#                              Bfix = rep(-1,Ttot), Particle_fix = NULL,  
+#                              M1 = M1_mcmc[1],Psurv = Psurv_mcmc[1],
+#                              sigma2_A = sigma2_ker, 
+#                              sigma2_X = sigma2_X_mcmc[g,1],
+#                              use_VS = use_VS)
+# })
+# for(h in 1:H){
+#   # Save the sampled paths in the right spot
+#   G_th[[h]]$Particles_PG[[g]] = temp[[h]]
+# }
+# 
+# 
+# 
+# g = 2
+# UpdateSig2X = FALSE
+# Updatec = FALSE; Updategamma = FALSE
+# Updatezetas = FALSE; # IMPLEMENTARE L'AGGIORNAMENTO DEI CENTRI!
+# pb = txtProgressBar(min = 2, max = G, initial = 2) 
+# for(g in 2:G){
+#   
+#   # cat("\n ++++++ g = ",g," ++++++ \n")
+#   setTxtProgressBar(pb,g)
+#   
+#   ## Assemble G_th for h=1,...,H to define G_t (for each t=1,...,Ttot)
+#   mean_vec_1T = Reduce(`+`, lapply(G_th, function(x){x$Particles_PG[[g-1]]$mean_k}))
+#   Zmat        = Reduce(cbind, lapply(G_th, function(x){x$Particles_PG[[g-1]]$Zmat_k})) 
+#   Amat        = Reduce(rbind, lapply(G_th, function(x){x$Particles_PG[[g-1]]$Amat_k})) 
+#   Ktot[g-1]   = ifelse(is.null(nrow(Amat)), 0, nrow(Amat))
+#   
+#   if(Ktot[g-1] == 0)
+#     cat("\n Ktot[",g-1,"] è 0, speriamo vada tutto bene \n")
+#   
+#   
+#   # Update sigma2_X
+#   if(UpdateSig2X){
+#     suff_stat_X = sum( apply(X-mean_vec_1T, 1, function(x){t(x)%*%x}) )
+#     sigma2_X_mcmc[g,1] = r_fullcond_sigma2_X(par_sig2X[1], par_sig2X[2], D, Ttot, suff_stat_X)
+#     # sigma2_XA_mcmc[g,1] = sigma2_X # set true values
+#   }else{
+#     sigma2_X_mcmc[g,1] = sigma2_X_mcmc[g-1,1]
+#   }
+#   
+#   
+#   # Update_gamma
+#   if(Updategamma){
+#     BetaProcess_params[g,1] = r_fullcond_gamma(par_gamma[1], par_gamma[2], 
+#                                                Ktot[g-1], Ttot, 
+#                                                BetaProcess_params[g-1,2], 
+#                                                BetaProcess_params[g-1,3])
+#     # BetaProcess_params[g,1] = gamma # set true values
+#   }else{
+#     BetaProcess_params[g,1] = BetaProcess_params[g-1,1]
+#   }
+#   
+#   # Update c
+#   if(Updatec){
+#     suff_stat_Z = stat_suff_Z(Zmat = Zmat)
+#     BetaProcess_params[g,2] = r_fullcond_c(BetaProcess_params[g-1,2], 
+#                                            par_c[1], par_c[2],
+#                                            gamma = BetaProcess_params[g,1], 
+#                                            sigma = BetaProcess_params[g,3],
+#                                            NumTrailTot = suff_stat_Z[1], 
+#                                            NumFailTot  = suff_stat_Z[3], 
+#                                            NnewTot = Ktot[g-1], Ttot = Ttot,
+#                                            var_prop[g-1])
+#     # BetaProcess_params[g,2] = c # set true values
+#     # Update var_prop
+#     var_prop[g] = 0.01
+#   }else{
+#     BetaProcess_params[g,2] = BetaProcess_params[g-1,2]
+#     var_prop[g] = 0.01
+#   }
+#   
+#   # Update M1 and Psurv
+#   M1_mcmc[g]    = computeM1(BetaProcess_params[g,])
+#   Psurv_mcmc[g] = computePsurv(BetaProcess_params[g,])
+#   
+#   # cat("\n M1 = ",M1_mcmc[g],"; Psurv = ",Psurv_mcmc[g],"\n")
+#   
+#   
+#   # Update zetas
+#   if(Updatezetas){
+#     stop("Non l'ho ancora fatto :(")
+#   }else{
+#     zetas_mcmc[[g]] = zetas_mcmc[[g-1]]
+#   }
+#   # Run Conditional SMC
+#   temp = lapply(1:H, function(h){
+#     
+#     Conditional_SeqMonteCarlo( X = X, N = N, D = D, Ttot = Ttot,
+#                                mu0 = zetas_mcmc[[g]][h,],
+#                                Bfix = G_th[[h]]$Particles_PG[[g-1]]$B_k,
+#                                Particle_fix = G_th[[h]]$Particles_PG[[g-1]]$Path_k,  
+#                                M1 = M1_mcmc[g],Psurv = Psurv_mcmc[g],
+#                                sigma2_A = sigma2_ker, 
+#                                sigma2_X = sigma2_X_mcmc[g,1],
+#                                use_VS = use_VS)
+#     
+#   })
+#   for(h in 1:H){
+#     # Save the sampled paths in the right spot
+#     G_th[[h]]$Particles_PG[[g]] = temp[[h]]
+#   }
+# 
+# }
+# close(pb)
+# 
+# # Inference sigma2_X and sigma2_A
+# quantiles   = apply(sigma2_X_mcmc, 2, quantile, probs = c(0.0025,0.5,0.9975))
+# dens_thetas = apply(sigma2_X_mcmc, 2, function(x){density(x)$y})
+# 
+# par(mfrow = c(1,1), mar = c(4,4,2,2), bty = "l")
+# plot(0,0,type = "n",  main = "Variances", xlab = "", ylab = "Dens.",
+#      xlim = range(quantiles), ylim = c(0,max(dens_thetas)) )
+# hist(sigma2_X_mcmc[,1], col = "darkgreen", nclass = "FD", freq = F, add = T)
+# abline(v = apply(sigma2_X_mcmc, 2, median), col = c("darkgreen"), lwd = 2, lty = 3 )
+# legend("topright", legend = colnames(sigma2_X_mcmc) ,col = c("darkgreen"), pch = 16)
+# 
+# 
+# 
+# # Gamma
+# summary(BetaProcess_params[,1])
+# plot(BetaProcess_params[,1], type = "l", main = "gamma")
+# 
+# # c
+# summary(BetaProcess_params[,2])
+# plot(BetaProcess_params[,2], type = "l", main = "c")
+# 
+# par(mfrow = c(1,3), bty = "l")
+# plot(M1_mcmc, type = "l", main = "M1")
+# plot(Psurv_mcmc, type = "l", main = "Prob. surv.");
+# plot(Ktot, type = "l", main = "Num. features")
+# 
+# 
+# 
+# 
+# Kt_mcmc_h = lapply(G_th, function(x){
+#   t(sapply(x$Particles_PG, function(x){apply(x$Zmat_k,1,sum)}))
+# })
+# # Kt_mcmc_h[[h]] is a GxT matrix such that Kt_mcmc_h[[h]][,t] is the traceplot of the number
+# # of feature in the h-th group at time t
+# Kt_mcmc = Reduce(`+`, Kt_mcmc_h)
+# par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
+# for(t in 1:Ttot){
+#   plot(Kt_mcmc[,t], type = "l", main = paste0("K_",t))
+# }
+# # Kt_mcmc is a GxT matrix such that Kt_mcmc[,t] is the traceplot of the 
+# # total number of feature across all groups at time t
+# 
+# 
+# # Final estimated filtered density in each group
+# burnin = (G-1)/2
+# filt_dens_h = lapply(G_th, function(x){
+#   result <- Reduce(`+`, lapply(x$Particles_PG[(G-burnin+1):(G)], function(xx){xx$mean_k}) )
+#   result = result / length((G-burnin+1):(G))
+# })
+# 
+# for(h in 1:H){
+#   par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
+#   for(t in 1:Ttot){
+#     res_t_vec = filt_dens_h[[h]][t,]
+#     res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
+#     plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+#               horizontal = F, main = paste0("Gr. ",h,"; Est. T = ",t))
+#   }
+# }
+# 
+# # Final estimated filtered density 
+# filt_dens = Reduce(`+`, filt_dens_h )
+# par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
+# for(t in 1:Ttot){
+#   res_t_vec = filt_dens[t,]
+#   res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
+#   plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+#             horizontal = F, main = paste0("Est. T = ",t))
+# }
 
 
 # PG with fix number of centers -------------------------------------------
@@ -392,20 +393,20 @@ for(t in 1:Ttot){
 seed = 42
 set.seed(seed)
 
-N  = 50
-G  = 30 + 1
+N  = 10
+G  = 10 + 1
 M1 = 0.25
 use_VS = FALSE
 H  = 4 # number of centers
 sigma2_ker = 1e-4 # variance base measure
 
-par_sig2X = set_par_invgamma(media = 0.001, var = 0.1)
-par_sig2A = set_par_invgamma(media = 0.01,   var = 2)
-par_gamma = set_par_gamma(media = 0.5,    var = 0.001)
-par_c     = set_par_gamma(media = 4,    var = 1)
+par_sig2X = set_par_invgamma(media = 0.1, var = 0.1)
+par_sig2A = set_par_invgamma(media = 1,   var = 1) # I can not learn this
+par_gamma = set_par_gamma(media = 0.1,    var = 0.5)
+par_c     = set_par_gamma(media = 10,    var = 5)
 
 # Gibbs sampler structures:
-
+omega = 1
 # Beta process (gamma, c, sigma)
 BetaProcess_params = matrix(NA, nrow = G, ncol = 3)
 colnames(BetaProcess_params) = c("gamma","c","sigma")
@@ -437,25 +438,31 @@ BetaProcess_params[,3]  = 0 # set sigma = 0 for all iterations
 M1_mcmc[1]    = computeM1(BetaProcess_params[1,])
 Psurv_mcmc[1] = computePsurv(BetaProcess_params[1,])
 
-sigma2_XA_mcmc[1,1] = 0.001 # initial value for sigma2_X
-sigma2_XA_mcmc[1,2] = 0.001  # initial value for sigma2_A
+sigma2_XA_mcmc[1,1] = sigma2_X # initial value for sigma2_X
+sigma2_XA_mcmc[1,2] = 0.1  # initial value for sigma2_A
 
 H_mcmc[1] = H; Hstar_mcmc[1] = 0
-# zetas_mcmc[[1]] = lapply(1:H, function(h){zetas[h,]})
-zetas_mcmc[[1]] = lapply(1:H, function(h){rep(0,D)})
+zetas_mcmc[[1]] = lapply(1:H, function(h){zetas[h,]})
+# zetas_mcmc[[1]] = lapply(1:H, function(h){rep(0,D)})
 
 g = 1
-Particles_PG[[1]] = CondSMC(X = X, N = N, D = D, Ttot = Ttot, 
-                            Bfix = rep(-1,Ttot), Particle_fix = NULL,  
+Particles_PG[[1]] = CondSMC(X = X, N = N, D = D, Ttot = Ttot,
+                            Bfix = rep(-1,Ttot), Particle_fix = NULL,
                             M1 = M1_mcmc[1], Psurv = Psurv_mcmc[1] ,
                             sigma2_X = sigma2_XA_mcmc[1,1],
                             sigma2_A = sigma2_XA_mcmc[1,2],
-                            zeta = zetas_mcmc[[1]], 
+                            zeta = zetas_mcmc[[1]],
                             use_VS = use_VS)
 
+# Amat          = A # set true values
+# mean_vec_1T   = (Z%*%A) # set true values
+# K             = 4 # set true values
+# Nnew_1T       = c(1,1,0,1,0,1,0,0,0,0,0,0)
+# Zmat          = Z # set true values
+# Ktot[1]       = nrow(Amat)
 
 g = 2
-UpdateSig2X = TRUE; UpdateSig2A = TRUE
+UpdateSig2X = FALSE; UpdateSig2A = FALSE
 Updatec = TRUE; Updategamma = TRUE
 updateGrAlloc = TRUE; updateCenters = TRUE; upNcenters = FALSE
 pb = txtProgressBar(min = 2, max = G, initial = 2) 
@@ -569,7 +576,34 @@ for(g in 2:G){
                                zeta = zetas_mcmc[[g]], 
                                use_VS = use_VS )
   
-  H_mcmc[g] = length(Particles_PG[[g]]$gr_alloc_k)
+  H_mcmc[g] = length(unique(Particles_PG[[g-1]]$gr_alloc_k))
+  
+  
+  if(g%%10 == 0){
+    cat("\n ")
+    cat("nrow(Amat) = ",nrow(Amat))
+    
+    # Plot mean_vec_1T
+    par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
+    for(t in 1:Ttot){
+      res_t_vec = mean_vec_1T[t,]
+      res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
+      plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+                horizontal = F, main = paste0("mean T=",t) )
+    }
+    
+    # Plot zetas
+    par(mfrow = c(2,2), mar = c(2,2,2,1), bty = "l")
+    for(i in 1:length(zetas_mcmc[[g]])){
+      # plot figure
+      res_t_vec = zetas_mcmc[[g]][[i]]
+      res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
+      plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+                horizontal = F, main = paste0("center[",i,"], g = ",g) )
+    }
+    
+  }
+  
 }
 close(pb)
 
@@ -588,6 +622,7 @@ legend("topright", legend = colnames(sigma2_XA_mcmc) ,col = c("darkgreen","darkr
 
 
 # Gamma
+par(mfrow = c(1,1), mar = c(4,4,2,2), bty = "l")
 summary(BetaProcess_params[,1])
 plot(BetaProcess_params[,1], type = "l", main = "gamma")
 
@@ -628,6 +663,22 @@ for(t in 1:Ttot){
 # Final estimated filtered density in each group
 # ..... TODO! .....
 
+
+Afinal = Particles_PG[[G]]$Amat_k; dim(Afinal)
+Zfinal = Particles_PG[[G]]$Zmat_k; dim(Zfinal)
+
+for(i in 1:nrow(Afinal)){
+  # plot figure
+  par(mfrow = c(1,2), mar = c(2,2,2,1), bty = "l")
+  res_t_vec = Afinal[i,]
+  res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
+  plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+            horizontal = F, main = paste0("A[",i,"]") )
+  
+  # plot survival path
+  plot(x = 1:Ttot, y = Zfinal[,i], pch = 16, xlab = "", ylab = "")
+  segments(x0 = 1:Ttot, x1 = 1:Ttot, y0 = rep(0,Ttot), y1 = Zfinal[,i])
+}
 
 
 

@@ -102,6 +102,38 @@ MyTraits::MatCol sample_A( const int& K, const MyTraits::VecCol& x, const MyTrai
 }
 
 // [[Rcpp::export]]
+Rcpp::List proposal_A( const int& K, const MyTraits::VecCol& x, const MyTraits::VecCol& zeta, 
+													   const double& g, const double& sig2_A  )
+{
+	double inf = std::numeric_limits<double>::infinity();
+	int D(x.size() ); // problem size
+	if(K <= 0){
+		//MyTraits::MatCol null = MyTraits::MatCol(0,D);
+		return Rcpp::List::create( Rcpp::Named("Anew") = MyTraits::MatCol(0,D), Rcpp::Named("log_proposal") = 0 ) ;
+	}
+		
+	if(D <= 0)
+		throw std::runtime_error("Error in proposal_A: invalid number of cols (D)");
+	if(g < 0 || g > 1)
+		throw std::runtime_error("Error in proposal_A: g must be in (0,1) ");
+
+	// Define basic quantities
+	MyTraits::VecCol m_vec(1.0/(double)K * (g*x + (1.0-g)*zeta) ); // mean of proposal distribution
+	MyTraits::VecCol log_proposal( -0.5 * sig2_A * (m_vec.transpose()*m_vec - 2*x.transpose()*m_vec) ); // term that appears in the proposal ratio
+	log_proposal *= (double)K; // each possible K value weights the same amount
+	MyTraits::MatCol Anew(MyTraits::MatCol::Constant(K,D,0.0) ); // initialize return obj
+	// Sample
+	sample::rnorm rn; // initialize sample for N rv
+	for(std::size_t ii=0; ii < D; ii++ ){
+		for(std::size_t l=0; l < K; l++ ){
+			Anew(l,ii) = rn(m_vec(ii), std::sqrt(sig2_A) );
+		}
+	}
+	return Rcpp::List::create( Rcpp::Named("Anew") = Anew, Rcpp::Named("log_proposal") = log_proposal ) ;
+}
+
+
+// [[Rcpp::export]]
 double log_dmarg_img( const int& K, const MyTraits::VecCol& x, const MyTraits::VecCol& mu0, 
 											const double& sig2_X, const double& sig2_A)
 {

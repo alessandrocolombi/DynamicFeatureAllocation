@@ -1,7 +1,7 @@
 #ifndef __UTILS__H
 #define __UTILS__H
 
-
+// [[Rcpp::plugins(cpp17)]]
 // [[Rcpp::depends(RcppEigen)]]
 // [[Rcpp::depends(RcppGSL)]]
 #include <Rcpp.h>

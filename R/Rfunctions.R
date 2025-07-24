@@ -687,10 +687,12 @@ CondSMC = function( X,N,D,Ttot,
     if( (!is.null(Bfix)) && (k == Bfix[t]) ){
       # Set the k-th particle to the value we are conditioning on
       Particles[[k]][[t]] = Particle_fix[[t]]
-      log_w = Reduce(`+`, lapply(1:H, function(h){
-        log_dmarg_img( Particles[[k]][[t]]$gr_card[h],
-                       X[t,],zeta[[h]],sigma2_X,sigma2_A ) 
-      }))
+      sum_values = c(rep(1,nrow(Particles[[k]][[t]]$active_values)) %*%  Particles[[k]][[t]]$active_values ) # new
+      log_w = 0
+      # log_w = Reduce(`+`, lapply(1:H, function(h){
+      #   log_dmarg_img( Particles[[k]][[t]]$gr_card[h],
+      #                  X[t,],zeta[[h]],sigma2_X,sigma2_A ) 
+      # }))
     }else{
       # Free particle, draw new values
       Nnew = 0; log_w = 0; gr_alloc = c(); gr_card = rep(0,H)
@@ -698,8 +700,11 @@ CondSMC = function( X,N,D,Ttot,
       # For each group h=1,...,H
       for(h in 1:H){
         Nnew_h = rpois(n = 1, lambda = M1) # num. new featues in group h
-        values_h = sample_A(Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
-        log_w_h = log_dmarg_img(Nnew_h,X[t,],zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
+        # values_h = sample_A(Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
+        # log_w_h = log_dmarg_img(Nnew_h,X[t,],zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
+        temp = proposal_A(Nnew_h, X[t,], zeta[[h]], omega, sigma2_A ) # new featues in group h
+        values_h = temp$Anew
+        log_w_h  = temp$log_proposal
         # Assemble the different groups
         Nnew = Nnew + Nnew_h
         gr_card[h] = Nnew_h
@@ -714,12 +719,15 @@ CondSMC = function( X,N,D,Ttot,
       Particles[[k]][[t]]$Nnew          = Nnew
       Particles[[k]][[t]]$gr_card       = gr_card
       Particles[[k]][[t]]$gr_alloc      = gr_alloc
+      
+      sum_values = rep(0,D) # new
       if(Nnew > 0){
         Particles[[k]][[t]]$survived  = seq(1,Nnew)
+        sum_values = c(rep(1,Nnew) %*% values) # new
       }
     }
     # Compute the unnormalized weights
-    log_w_mat[t,k] = log_w
+    log_w_mat[t,k] = log_w + log_dmvnorm(X[t,],sum_values,sigma2_X*diag(D) )
     
     # °°° Finish updating particle k
   }
@@ -747,10 +755,12 @@ CondSMC = function( X,N,D,Ttot,
       if((!is.null(Bfix)) && (k == Bfix[t])){
         # Set the k-th particle to the value we are conditioning on
         Particles[[k]][[t]] = Particle_fix[[t]]
-        log_w = Reduce(`+`, lapply(1:H, function(h){
-          log_dmarg_img( Particles[[k]][[t]]$gr_card[h],
-                         Xstar,zeta[[h]],sigma2_X,sigma2_A ) 
-        }))
+        sum_values = c(rep(1,nrow(Particles[[k]][[t]]$active_values)) %*%  Particles[[k]][[t]]$active_values ) # new
+        log_w = 0
+        # log_w = Reduce(`+`, lapply(1:H, function(h){
+        #   log_dmarg_img( Particles[[k]][[t]]$gr_card[h],
+        #                  Xstar,zeta[[h]],sigma2_X,sigma2_A ) 
+        # }))
       }else{
         
         # Update particle k at time t
@@ -785,16 +795,29 @@ CondSMC = function( X,N,D,Ttot,
           }
         }
         
+        # Update Xstar subtracting from X[t,] the current features
+        Xstar  = X[t,] 
+        n_surv = length(ind_survived)
+        if(n_surv > 0){
+          survived_values = Particles[[j]][[t-1]]$active_values[ind_survived,]
+          if(!is.matrix(survived_values))
+            survived_values = matrix(survived_values, nrow = n_surv, ncol = D, byrow = T)
+          Xstar  = Xstar - rep(1,n_surv)%*%survived_values
+        }
+        
         # Innovation: ... For each group h=1,...,H
         Nnew = 0; log_w = 0; gr_alloc = c(); 
         values = matrix(0,nrow = 0, ncol = D)
         for(h in 1:H){
           Nnew_h = rpois(n = 1, lambda = M1) # num. new featues in group h
-          values_h = sample_A(Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
-          log_w_h = log_dmarg_img(Nnew_h,X[t,],zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
           
-          # values_h = sample_A(Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
-          # log_w_h = log_dmarg_img(Nnew_h,Xstar,zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
+          temp = proposal_A(Nnew_h, Xstar, zeta[[h]], omega, sigma2_A ) # new featues in group h
+          values_h = temp$Anew
+          log_w_h  = temp$log_proposal
+          
+          # values_h = sample_A(     Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
+          # log_w_h  = log_dmarg_img(Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # log un-norm weight in group h
+                      
           
           # Assemble the different groups
           Nnew = Nnew + Nnew_h
@@ -826,10 +849,16 @@ CondSMC = function( X,N,D,Ttot,
         Particles[[k]][[t]]$survived = ind_survived
         Particles[[k]][[t]]$gr_card  = gr_card_new
         
+        sum_values = rep(0,D) # new
+        if(Nnew > 0){
+          sum_values = c(rep(1,Nnew) %*% values) # new
+        }
+        
       }
       
       # Compute the un-normalized weights
-      log_w_mat[t,k] = log_w + log_prod_bern - log_prop_thin
+      log_w_mat[t,k] = log_w + log_dmvnorm(Xstar,sum_values,sigma2_X*diag(D) ) + 
+                       log_prod_bern - log_prop_thin
     }
     
     # c) Compute the normalized weights

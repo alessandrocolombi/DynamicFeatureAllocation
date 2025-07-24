@@ -7,7 +7,7 @@ sim_images = function(epsX, Ti){
   # 0 nero, 1 bianco
   
   # NUOVI FEATURES:
-  A1 = rep(0, D)
+  A1 = rep(0, D )
   idx = c(2, 9:11, 18)
   A1[idx] = rep(1, length(idx))
   postscript("A1.eps", hor=F)
