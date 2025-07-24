@@ -2,7 +2,7 @@
 rm(list = ls())
 setwd("C:/Users/colom/DynamicFeatureAllocation/R/Scripts")
 Rcpp::sourceCpp("../../src/RcppFunctions.cpp")
-source("../Rfunctions.R")
+source("../Rfunctions.R" )
 source("../genera_img_ilaria.R")
 
 # Custom functions --------------------------------------------------------
