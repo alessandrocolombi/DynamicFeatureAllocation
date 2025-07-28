@@ -82,6 +82,19 @@ plot_v2m = function(x, di = 8, center_val_plot = NULL){
   plot_img(mean_t, center_value = NULL, col.lower = "grey95",col.upper = "grey10",
            horizontal = F, main = " ")
 }
+
+plot_multiple_imgs = function(mat, plt_wnd = c(3,4),center_value = NULL){
+  rows = nrow(mat)
+  cols = ncol(mat)
+  di = sqrt(cols)
+  par(mfrow = plt_wnd, mar = c(2,2,2,1), bty = "l")
+  for(i in 1:rows){
+    mean_t = matrix(data = mat[i,], nrow = di, ncol = di, byrow = F)
+    plot_img(mean_t, center_value = NULL, col.lower = "grey95",col.upper = "grey10",
+             horizontal = F, main = paste0(" i = ",i))  
+  }
+}
+
 # BetaBernoulli - Moving images --------------------------------------------------
 computeM1 = function(x){
   x[1] * exp( lgamma(x[3]+1) + lgamma(x[2]-x[3]+1) - lgamma(x[2]+2) )
@@ -231,7 +244,7 @@ propose_thinning_VS = function(Xobs, ActFeat, sig2X, Psurv){
     active_prop_1[j] = 1;active_prop_0[j] = 0
     mean_1 = active_prop_1 %*% ActFeat
     mean_0 = active_prop_0 %*% ActFeat
-    log_prob_1 <- log_dmvnorm(x = Xobs, mean = mean_1, Sigma = sig2X*diag(D))  - 2*D # score if I keep it (adjusted)
+    log_prob_1 <- log_dmvnorm(x = Xobs, mean = mean_1, Sigma = sig2X*diag(D)) - 2*D # score if I keep it (adjusted)
     log_prob_0 <- log_dmvnorm(x = Xobs, mean = mean_0, Sigma = sig2X*diag(D)) # score if I drop it
     log_den = log_stable_sum( c(log_prob_1,log_prob_0), is_log = TRUE )
     log_prob_active_j = log_prob_1 - log_den  
@@ -447,6 +460,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
                                       Bfix, Particle_fix,  
                                       M1,Psurv,sigma2_A,sigma2_X,
                                       mu0 = rep(0,D),
+                                      proposal_Nnew_1T = NULL,
                                       use_VS = TRUE){
   
   thinning_func = choose_propose_thinning(use_VS)
@@ -470,20 +484,34 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
   t  = 1
   scale_mean_post = sigma2_A / (sigma2_A + sigma2_X)
   scale_var_post  = sigma2_A*sigma2_X / (sigma2_A + sigma2_X)
+  
+  # cat("\n Part. fissa: ",Bfix[t],"\n")
   for(k in 1:N){
-    
+    # cat("\n Part. #",k,"; ")
     if( (!is.null(Bfix)) && (k == Bfix[t]) ){
+      # cat(" Fissa!!! ")
       # Set the k-th particle to the value we are conditioning on
       Particles[[k]][[t]] = Particle_fix[[t]]
       Nnew = Particles[[k]][[t]]$Nnew
     }else{
+      
+      if(!is.null(proposal_Nnew_1T)){
+        disc_adapt_prop = proposal_Nnew_1T[t,]
+        disc_adapt_prop = table(disc_adapt_prop)
+        Kproposal_ind = sample(1:length(disc_adapt_prop), size = 1, prob = disc_adapt_prop)
+        Kprop1 = as.numeric(names(disc_adapt_prop)[Kproposal_ind])
+        Kprop2 = rpois(n = 1, lambda = M1)
+      }else{
+        Kprop1 <- Kprop2 <- rpois(n = 1, lambda = M1)
+      }
+
       # Draw a new particle
-      Nnew   = rpois(n = 1, lambda = M1)
+      Nnew   = ifelse(runif(1)<0.75, Kprop1, Kprop2)
       values = sample_A(Nnew, X[t,], mu0, sigma2_X, sigma2_A  ) 
       Particles[[k]][[t]]$active_values   = values
       Particles[[k]][[t]]$Nnew            = Nnew
       if(Nnew > 0)
-        Particles[[k]][[t]]$survived        = seq(1,Nnew)
+        Particles[[k]][[t]]$survived      = seq(1,Nnew)
     }
       # Compute the unnormalized weights
       log_w[t,k] = log_dmarg_img(Nnew,X[t,],mu0,sigma2_X,sigma2_A)
@@ -492,6 +520,8 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
   # b) Compute the nomralized weights
   w[t,] = exp( log_w[t,] - max(log_w[t,]) )
   W[t,] = w[t,]/sum(w[t,])
+  
+  t = 2
   # Time t (t = 2,...,Ttot)
   for(t in 2:Ttot){
     # cat("\n ++++++ t = ",t," ++++++ \n")
@@ -501,13 +531,17 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
       A[t-1, Bfix[t] ] = Bfix[t-1] # Cond. SMC
     
     # b) Sample the particles
+    # cat("\n Part. fissa: ",Bfix[t],"\n")
     for(k in 1:N){
+      # cat("\n Part. #",k,"; ")
       j = A[t-1,k] # parent index
-      
+      # cat(" genitore",j)
       if((!is.null(Bfix)) && (k == Bfix[t])){
         # Set the k-th particle to the value we are conditioning on
+        # cat(" Fissa!!! ")
         Particles[[k]][[t]] = Particle_fix[[t]]
         Nnew = Particles[[k]][[t]]$Nnew
+        log_w[t,k] = Particles[[k]][[t]]$log_w
       }else{
         # Update particle k at time t
         
@@ -520,6 +554,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
           
           survived = thinning$survived
           n_surv   = sum(survived)
+          # cat("; n_surv = ",n_surv)
           log_prop_thin = thinning$log_prop_move
           log_prod_bern = n_surv * log(Psurv) + (num_active_old-n_surv) * log(1-Psurv)
           
@@ -541,7 +576,20 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
         # if(!is.null( nrow(Particles[[j]][[t-1]]$active_values) ) )
           # Xstar  = Xstar - colSums(Particles[[j]][[t-1]]$active_values)
 
-        Nnew   = rpois(n = 1, lambda = M1)
+        if(!is.null(proposal_Nnew_1T)){
+          disc_adapt_prop = proposal_Nnew_1T[t,]
+          disc_adapt_prop = table(disc_adapt_prop)
+          Kproposal_ind = sample(1:length(disc_adapt_prop), size = 1, prob = disc_adapt_prop)
+          Kprop1 = as.numeric(names(disc_adapt_prop)[Kproposal_ind])
+          Kprop2 = rpois(n = 1, lambda = M1)
+        }else{
+          Kprop1 <- Kprop2 <- rpois(n = 1, lambda = M1)
+        }
+        
+        # Draw a new particle
+        Nnew   = ifelse(runif(1)<0.75, Kprop1, Kprop2)
+        
+        # cat("; Nnew = ",Nnew)
         values = sample_A(Nnew, c(Xstar), mu0, sigma2_X, sigma2_A)
         
         # Assemble thinning + innovation:
@@ -555,12 +603,9 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
         Particles[[k]][[t]]$Nnew     = Nnew
         Particles[[k]][[t]]$survived = which(survived > 0)
         
+        # Compute the un-normalized weights
+        log_w[t,k] = log_dmarg_img(Nnew,Xstar,mu0,sigma2_X,sigma2_A) + log_prod_bern - log_prop_thin
       }
-      
-      # Compute the un-normalized weights
-      log_w[t,k] = log_dmarg_img(Nnew,Xstar,mu0,sigma2_X,sigma2_A) + log_prod_bern - log_prop_thin
-      ## OLD
-      # log_w[t,k] = log_marginal(Xstar,sigma2_A,sigma2_X,Nnew) + log_prod_bern - log_prop_thin
     }
     
     # c) Compute the normalized weights
@@ -584,6 +629,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
   Path_k = vector("list", Ttot)
   for(t in 1:Ttot){
     Path_k[[t]] = Particles[[ B_k[t] ]][[t]]
+    Path_k[[t]]$log_w = log_w[ t, B_k[t] ]
   }
 
   # Find all features appeared at least once
@@ -659,6 +705,7 @@ CondSMC = function( X,N,D,Ttot,
                     Bfix, Particle_fix,  
                     M1,Psurv,
                     sigma2_A,sigma2_X,zeta, # these form theta
+                    proposal_Nnew_1T = NULL,
                     use_VS = FALSE){
   
   thinning_func = choose_propose_thinning(use_VS)
@@ -683,7 +730,9 @@ CondSMC = function( X,N,D,Ttot,
   # Time 1
   # a) Sample the particles
   t  = 1
+  cat("\n --------- \n t = ",t,"\n")
   for(k in 1:N){
+    # cat("\n --------- \n")
     if( (!is.null(Bfix)) && (k == Bfix[t]) ){
       # Set the k-th particle to the value we are conditioning on
       Particles[[k]][[t]] = Particle_fix[[t]]
@@ -695,11 +744,24 @@ CondSMC = function( X,N,D,Ttot,
       # Free particle, draw new values
       Nnew = 0; log_w = 0; gr_alloc = c(); gr_card = rep(0,H)
       values = matrix(0,nrow = 0, ncol = D)
+      
       # For each group h=1,...,H
       for(h in 1:H){
-        Nnew_h = rpois(n = 1, lambda = M1) # num. new featues in group h
-        values_h = sample_A(Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
-        log_w_h = log_dmarg_img(Nnew_h,X[t,],zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
+        
+        # Discrete adaptive proposal for Nnew_h
+        if(!is.null(proposal_Nnew_1T)){
+          disc_adapt_prop = proposal_Nnew_1T[t,]
+          disc_adapt_prop = table(disc_adapt_prop)
+          Kproposal_ind = sample(1:length(disc_adapt_prop), size = 1, prob = disc_adapt_prop)
+          Kprop1 = as.numeric(names(disc_adapt_prop)[Kproposal_ind])
+          Kprop2 = rpois(n = 1, lambda = M1)
+        }else{
+          Kprop1 <- Kprop2 <- rpois(n = 1, lambda = M1)
+        }
+        Nnew_h = ifelse(runif(1)<0.75, Kprop1, Kprop2)
+        values_h = sample_A(   Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
+        log_w_h = log_dmarg_img(Nnew_h,X[t,], zeta[[h]], sigma2_X, sigma2_A ) # log un-norm weight in group h
+        # cat("\n h = ",h,"; Nnew_h = ",Nnew_h,"; log_w_h = ",log_w_h)
         # Assemble the different groups
         Nnew = Nnew + Nnew_h
         gr_card[h] = Nnew_h
@@ -727,11 +789,10 @@ CondSMC = function( X,N,D,Ttot,
   w[t,] = exp( log_w_mat[t,] - max(log_w_mat[t,]) )
   W[t,] = w[t,]/sum(w[t,])
   
-  
   # Time t (t = 2,...,Ttot)
   t = 2
   for(t in 2:Ttot){
-    # cat("\n ++++++ t = ",t," ++++++ \n")
+    cat("\n --------- \n t = ",t,"\n")
     # a) Sample the parent node
     A[t-1,] = sample(1:N, size = N, W[t-1,], replace = TRUE)
     if( all(Bfix > 0) )
@@ -739,12 +800,16 @@ CondSMC = function( X,N,D,Ttot,
     
     # b) Sample the particles
     for(k in 1:N){
+      
+      # cat("\n --------- \n")
+      
       j = A[t-1,k] # parent index
       Xstar  = X[t,] 
-      if(!is.null( nrow(Particles[[j]][[t-1]]$active_values) ) )
-        Xstar  = Xstar - colSums(Particles[[j]][[t-1]]$active_values)
-      
       if((!is.null(Bfix)) && (k == Bfix[t])){
+        # Compute Xstar
+        if(  !is.null( nrow(Particles[[j]][[t-1]]$active_values))  )
+          Xstar  = Xstar - colSums(Particles[[j]][[t-1]]$active_values)
+        
         # Set the k-th particle to the value we are conditioning on
         Particles[[k]][[t]] = Particle_fix[[t]]
         log_w = Reduce(`+`, lapply(1:H, function(h){
@@ -762,6 +827,7 @@ CondSMC = function( X,N,D,Ttot,
           # Thinning part (group h)
           num_active_old_h = Particles[[j]][[t-1]]$gr_card[h]
           if( num_active_old_h > 0  ){
+            
             ind_h = which(Particles[[j]][[t-1]]$gr_alloc == h)
             ActFeat_h = matrix(Particles[[j]][[t-1]]$active_values[ind_h,],
                                ncol = D)# active features in group h at time t
@@ -772,7 +838,7 @@ CondSMC = function( X,N,D,Ttot,
             survived_h = thinning$survived # this is a 0/1 vector  
             survived_ind_h = ind_h[which(survived_h == 1)] # this is a vector with the survived indices
             n_surv_h   = sum(survived_h)
-            
+            # cat("\n h = ",h,"; #old = ",num_active_old_h,"; #new = ",n_surv_h)
             ind_survived = c(ind_survived, survived_ind_h) # collect ind_survived across all different groups
             gr_alloc_surv = c(gr_alloc_surv, rep(h,n_surv_h) ) # collect group allocation of survived atoms
             gr_card_new[h] = gr_card_new[h] + n_surv_h # update number of features in group h
@@ -785,17 +851,43 @@ CondSMC = function( X,N,D,Ttot,
           }
         }
         
+        # Compute Xstar (the remaining part of the image)
+        n_surv = length(ind_survived) # total number of survived features
+        if(n_surv > 0){
+          # At least one feature survived
+          if( length(gr_alloc_surv) != length(ind_survived) )
+            stop("Error in CondSMC. The number of survived atoms mismatches the group allocation survived vector")
+          survived_values = Particles[[j]][[t-1]]$active_values[ind_survived,]
+          if(!is.matrix(survived_values))
+            survived_values = matrix(survived_values, nrow = n_surv, ncol = D, byrow = T)
+          
+          # Subtract the sum of survived features
+          Xstar  = Xstar - rep(1,n_surv)%*%survived_values
+        }
+        
         # Innovation: ... For each group h=1,...,H
         Nnew = 0; log_w = 0; gr_alloc = c(); 
         values = matrix(0,nrow = 0, ncol = D)
         for(h in 1:H){
-          Nnew_h = rpois(n = 1, lambda = M1) # num. new featues in group h
-          values_h = sample_A(Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
-          log_w_h = log_dmarg_img(Nnew_h,X[t,],zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
+          # Discrete adaptive proposal for Nnew_h
+          if(!is.null(proposal_Nnew_1T)){
+            disc_adapt_prop = proposal_Nnew_1T[t,]
+            disc_adapt_prop = table(disc_adapt_prop)
+            Kproposal_ind = sample(1:length(disc_adapt_prop), size = 1, prob = disc_adapt_prop)
+            Kprop1 = as.numeric(names(disc_adapt_prop)[Kproposal_ind])
+            Kprop2 = rpois(n = 1, lambda = M1)
+          }else{
+            Kprop1 <- Kprop2 <- rpois(n = 1, lambda = M1)
+          }
+          Nnew_h = ifelse(runif(1)<0.75, Kprop1, Kprop2)
           
-          # values_h = sample_A(Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
-          # log_w_h = log_dmarg_img(Nnew_h,Xstar,zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
+          # values_h = sample_A(Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
+          # log_w_h = log_dmarg_img(Nnew_h,X[t,],zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
           
+          values_h = sample_A(    Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
+          log_w_h = log_dmarg_img(Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # log un-norm weight in group h
+          
+          # cat("\n h = ",h,"; Nnew_h = ",Nnew_h,"; log_w_h = ",log_w_h)
           # Assemble the different groups
           Nnew = Nnew + Nnew_h
           gr_card_new[h] = gr_card_new[h] + Nnew_h # update number of features in group h
@@ -807,13 +899,8 @@ CondSMC = function( X,N,D,Ttot,
         }
         
         # Assemble thinning + innovation:
-        n_surv = length(ind_survived)
+        # n_surv = length(ind_survived) # già calcolato
         if(n_surv > 0){
-          # At least one feature survived
-          if( length(gr_alloc_surv) != length(ind_survived) )
-            stop("Error in CondSMC. The number of survived atoms mismatches the group allocation survived vector")
-          
-          survived_values = Particles[[j]][[t-1]]$active_values[ind_survived,]
           Particles[[k]][[t]]$active_values = rbind( survived_values, values   )
           Particles[[k]][[t]]$gr_alloc  = c(gr_alloc_surv, gr_alloc)
         }else{
