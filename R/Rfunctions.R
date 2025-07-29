@@ -661,20 +661,25 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
     return(res)
   }else{
     
-    Zmat_k = matrix(0, nrow = Ttot, ncol = nrow(Amat_k))
+    Zmat_k_old = matrix(0, nrow = Ttot, ncol = nrow(Amat_k))
+    Zmat_k = matrix(0,nrow = Ttot, ncol = nrow(Amat_k))
     t = 1
-    if(Nnew_paths_k[t] > 0)
-      Zmat_k[t, 1:cum_Ntot_k[1] ] = 1
+    if(Nnew_paths_k[t] > 0){
+      Zmat_k_old[t, 1:cum_Ntot_k[1] ] = 1
+      Zmat_k[t,Path_k[[t]]$label_actives] = 1 
+    }
     for(t in 2:Ttot){
       # Time t (2...Ttot)
-      if(Nnew_paths_k[t] > 0)
-        Zmat_k[t, (cum_Ntot_k[t-1]+1):(cum_Ntot_k[t])] = 1
+      Zmat_k[t,Path_k[[t]]$label_actives] = 1
       
-      Nsurvived_old = length(which(Zmat_k[t-1,] == 1))
-      submat = matrix( Zmat_k[,which(Zmat_k[t-1,] == 1)],
+      if(Nnew_paths_k[t] > 0)
+        Zmat_k_old[t, (cum_Ntot_k[t-1]+1):(cum_Ntot_k[t])] = 1
+      
+      Nsurvived_old = length(which(Zmat_k_old[t-1,] == 1))
+      submat = matrix( Zmat_k_old[,which(Zmat_k_old[t-1,] == 1)],
                        nrow = Ttot, ncol = Nsurvived_old)
       submat[t, Path_k[[t]]$survived ] = 1
-      Zmat_k[,which(Zmat_k[t-1,] == 1)] = submat
+      Zmat_k_old[,which(Zmat_k_old[t-1,] == 1)] = submat
     }
     
     res = list("Zmat_k" = Zmat_k,
