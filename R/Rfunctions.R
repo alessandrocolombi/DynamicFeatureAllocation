@@ -726,7 +726,6 @@ CondSMC = function( X,N,D,Ttot,
   # A[1,]: vector with the parents of the particles at time 2, i.e., X[2,k] is generated conditionally to X[1,A[1,k]]
   
   ### ---> Start filtering
-  
   # Time 1
   # a) Sample the particles
   t  = 1
@@ -923,7 +922,6 @@ CondSMC = function( X,N,D,Ttot,
     w[t,] = exp( log_w_mat[t,] - max(log_w_mat[t,]) )
     W[t,] = w[t,]/sum(w[t,])
   }
-  
   ### End of filtering <--- 
   
   # Select the chosen particle
@@ -945,6 +943,7 @@ CondSMC = function( X,N,D,Ttot,
   # Find all features appeared at least once
   Amat_k <- cum_Ntot_k <- Nnew_paths_k <- gr_alloc_k <- c()
   for(t in Ttot:1){
+    
     Mat = Path_k[[t]]$active_values
     nuove = Path_k[[t]]$Nnew
     Nnew_paths_k = c(nuove, Nnew_paths_k)
@@ -958,7 +957,8 @@ CondSMC = function( X,N,D,Ttot,
     }
   }
   cum_Ntot_k = cumsum(cum_Ntot_k)
-  # length(gr_alloc_k) = nrow(Amat_k); gr_alloc_k[j] = h iff Amat_k[j,] belong to h-th group 
+  # length(gr_alloc_k) = nrow(Amat_k); 
+  # gr_alloc_k[j] = h iff Amat_k[j,] belong to h-th group 
   
   
   
@@ -979,14 +979,16 @@ CondSMC = function( X,N,D,Ttot,
     
     t = 1
     Ktot = 0
-    Zmat_k = matrix(0, nrow = Ttot, ncol = nrow(Amat_k))
+    Zmat_k_old = matrix(0, nrow = Ttot, ncol = nrow(Amat_k))
+    Zmat_k = matrix(0,nrow = Ttot, ncol = nrow(Amat_k))
     Path_k[[t]][["label_actives"]] <- c()  
     
     n_active = length(Path_k[[t]]$gr_alloc)
     if(Path_k[[t]]$Nnew > 0){
       Path_k[[t]]$label_actives =  c(Path_k[[t]]$label_actives,1:n_active)
       Ktot = Ktot + Path_k[[t]]$Nnew 
-      Zmat_k[t, 1:cum_Ntot_k[1] ] = 1
+      Zmat_k_old[t, 1:cum_Ntot_k[1] ] = 1
+      Zmat_k[t,Path_k[[t]]$label_actives] = 1
     }
     for(t in 2:Ttot){
       # Time t (2...Ttot)
@@ -1006,20 +1008,23 @@ CondSMC = function( X,N,D,Ttot,
         Ktot = Ktot + Path_k[[t]]$Nnew 
       }
       #b) Z matrix
-      if(Nnew_paths_k[t] > 0)
-        Zmat_k[t, (cum_Ntot_k[t-1]+1):(cum_Ntot_k[t])] = 1
+      Zmat_k[t,Path_k[[t]]$label_actives] = 1
       
-      Nsurvived_old = length(which(Zmat_k[t-1,] == 1))
-      submat = matrix( Zmat_k[,which(Zmat_k[t-1,] == 1)],
+      if(Nnew_paths_k[t] > 0)
+        Zmat_k_old[t, (cum_Ntot_k[t-1]+1):(cum_Ntot_k[t])] = 1
+      
+      Nsurvived_old = length(which(Zmat_k_old[t-1,] == 1))
+      submat = matrix( Zmat_k_old[,which(Zmat_k_old[t-1,] == 1)],
                        nrow = Ttot, ncol = Nsurvived_old)
       submat[t, Path_k[[t]]$survived ] = 1
-      Zmat_k[,which(Zmat_k[t-1,] == 1)] = submat
+      Zmat_k_old[,which(Zmat_k_old[t-1,] == 1)] = submat
     }
     
     if(Ktot != nrow(Amat_k))
       stop("Something wrong with the total number of groups")
     
     res = list("Zmat_k" = Zmat_k,
+               "Zmat_k_old" = Zmat_k_old,
                "Amat_k" = Amat_k,
                "mean_k" = Zmat_k%*%Amat_k,
                "Path_k" = Path_k,

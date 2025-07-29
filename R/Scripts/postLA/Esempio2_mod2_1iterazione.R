@@ -97,31 +97,7 @@ fit = CondSMC(X = X, N = N, D = D, Ttot = Ttot,
               proposal_Nnew_1T = NULL,
               use_VS = use_VS)
 
-## Important changes
-
-# Custom Zfinal
-Num_feat_tot = max(fit$cum_Ntot_k)
-Zfinal = matrix(0,nrow = Ttot, ncol = Num_feat_tot)
-for(t in 1:Ttot){
-  Zfinal[t,fit$Path_k[[t]]$label_actives] = 1
-}
-# Custom Afinal - Filtered mean
-Afinal = matrix(NA,nrow = Num_feat_tot, ncol = D)
-FiltMean = matrix(NA,nrow = Ttot, ncol = D)
-for(t in 1:Ttot){
-  Afinal[ fit$Path_k[[t]]$label_actives , ] = fit$Path_k[[t]]$active_values
-  FiltMean[t,] = colSums(fit$Path_k[[t]]$active_values)
-}
-# Filtered mean
-plot_multiple_imgs(FiltMean, plt_wnd = c(3,4)) # TO CHECK
-
-
-# Active labels (just a check)
-for(t in 1:Ttot){
-  cat("\n t = ",t,"; active: ",fit$Path_k[[t]]$label_actives)
-}
-
-### ---> Devo confrontare con quello che viene ritornato e capire perché sono diverse!
+beepr::beep()
 
 
 # Number of new features at each time step
@@ -129,10 +105,19 @@ temp = sapply(fit$Path_k[1:Ttot],function(x) x$Nnew)
 temp
 
 # Total number of features
-nrow(fit$Amat_k) # TO CHECK
+nrow(fit$Amat_k) 
 
+
+# Active labels (just a check)
+for(t in 1:Ttot){
+  cat("\n t = ",t,"; active: ",fit$Path_k[[t]]$label_actives)
+}
+
+plot_multiple_imgs(fit$mean_k, plt_wnd = c(3,4))
 
 # Feature path
+Afinal = fit$Amat_k
+Zfinal = fit$Zmat_k
 for(i in 1:Num_feat_tot){
   # plot figure
   par(mfrow = c(1,2), mar = c(2,2,2,1), bty = "l")
@@ -145,6 +130,12 @@ for(i in 1:Num_feat_tot){
   plot(x = 1:Ttot, y = Zfinal[,i], pch = 16, xlab = "", ylab = "")
   segments(x0 = 1:Ttot, x1 = 1:Ttot, y0 = rep(0,Ttot), y1 = Zfinal[,i])
 }
+
+
+
+
+
+
 
 
 
@@ -166,3 +157,28 @@ plot_multiple_imgs(ActFea, plt_wnd = c(1,2))
 
 
 
+## Important changes
+# Custom Zfinal
+Num_feat_tot = max(fit$cum_Ntot_k)
+Zfinal = matrix(0,nrow = Ttot, ncol = Num_feat_tot)
+for(t in 1:Ttot){
+  Zfinal[t,fit$Path_k[[t]]$label_actives] = 1
+}
+# Custom Afinal - Filtered mean
+Afinal = matrix(NA,nrow = Num_feat_tot, ncol = D)
+FiltMean = matrix(NA,nrow = Ttot, ncol = D)
+for(t in 1:Ttot){
+  Afinal[ fit$Path_k[[t]]$label_actives , ] = fit$Path_k[[t]]$active_values
+  FiltMean[t,] = colSums(fit$Path_k[[t]]$active_values)
+}
+# Filtered mean
+plot_multiple_imgs(FiltMean, plt_wnd = c(3,4))
+plot_multiple_imgs(fit$mean_k, plt_wnd = c(3,4))
+
+
+
+
+
+# Number of new features at each time step
+temp = sapply(fit$Path_k[1:Ttot],function(x) x$Nnew)
+temp

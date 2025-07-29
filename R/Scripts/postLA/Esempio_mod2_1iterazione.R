@@ -73,6 +73,7 @@ fit = CondSMC(X = X, N = N, D = D, Ttot = Ttot,
               zeta = zetas_mcmc, 
               proposal_Nnew_1T = NULL,
               use_VS = use_VS)
+beepr::beep()
 
 # Number of new features at each time step
 temp = sapply(fit$Path_k[1:Ttot],function(x) x$Nnew)
