@@ -6,3 +6,7 @@
 .ini
 *.Rdat
 .Rdat
+*.pdf
+.pdf
+*.eps
+.eps
