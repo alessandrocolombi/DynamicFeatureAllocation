@@ -12,27 +12,53 @@ source("../../genera_img_ilaria.R")
 
 load("C:/Users/colom/DynamicFeatureAllocation/R/Scripts/save/img_base.Rdat")
 
-
-# Data generation ---------------------------------------------------------
-seed = 2927
+seed = 42
 set.seed(seed)
 
-Ttot <- Ti <- 24    # Time length
+Ttot = 24    # Time length
 di   = 8
 D    = di*di # Size of the problem
 
-sigma2_X <- sig2_X <- sig2X <- 0.01
-sim_data = sim_images(sig2_X,Ti)
+H = 4
+zetas = rbind(img_base[1,],img_base[2,],img_base[3,],img_base[4,])
+sigma2_X <- sig2_X <- sig2X <- 0.001
+A = img_base[1:4, ]
+Z = matrix(NA,Ttot,4)
+Z[,1] = c(1,1,1,1,
+          1,1,1,1,
+          1,0,0,0,
+          0,0,0,0,
+          1,1,1,1,
+          0,0,0,0) # cross
+Z[,2] = c(0,0,0,0,
+          1,1,1,1,
+          1,1,1,1,
+          1,1,1,1,
+          1,1,1,0,
+          0,0,0,0)
+Z[,3] = c(0,0,0,0,
+          0,0,0,0,
+          1,1,1,1,
+          1,1,1,1,
+          0,0,0,0,
+          1,1,1,1)
+Z[,4] = c(0,0,0,0,
+          0,0,0,0,
+          0,0,0,0,
+          0,0,1,1,
+          1,1,1,1,
+          1,1,1,1)
 
-A = sim_data$A
-Z = sim_data$Z
-X = sim_data$X
-
-Nfeat_tot = nrow(A)
-plot_multiple_imgs(A, plt_wnd = c(2,2))
+plot_multiple_imgs(zetas, plt_wnd = c(2,2))
 
 
-par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
+X = matrix(0,nrow = Ttot, ncol = D)
+for(t in 1:Ttot){
+  mean_t_vec = (Z%*%A)[t,]
+  X[t,] = mvtnorm::rmvnorm(n = 1, mean = mean_t_vec, sigma = sig2X * diag(D))
+}
+
+par(mfrow = c(3,4), mar = c(1,1,1,1) , bty = "l")
 for(t in 1:Ttot){
   mean_t_vec = (Z%*%A)[t,]
   mean_t = matrix(data = mean_t_vec, nrow = di, ncol = di, byrow = F)
@@ -44,10 +70,9 @@ par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
 for(t in 1:Ttot){
   Xt_vec = X[t,]
   X_t = matrix(data = Xt_vec, nrow = di, ncol = di, byrow = F)
-  plot_img(X_t, center_value = 0.5, col.lower = "grey95",col.upper = "grey10",
+  plot_img(X_t, center_value = NULL, col.lower = "grey95",col.upper = "grey10",
            horizontal = F, main = paste0("Obs. T = ",t))
 }
-
 
 
 
@@ -104,7 +129,7 @@ BetaProcess_params[,3]  = 0 # set sigma = 0 for all iterations
 # BetaProcess_params[1,1:2] = c(gamma,c) # # set true values (if any)
 
 
-# sigma2_XA_mcmc[1,] = c(0.05,0.5) # initial values for sigma2_X and sigma2_A
+# sigma2_XA_mcmc[1,] = c(0.05,1) # initial values for sigma2_X and sigma2_A
 sigma2_XA_mcmc[1,] = c(sigma2_X,0.5) # set true values
 
 M1_mcmc[1] = computeM1(BetaProcess_params[1,])
@@ -152,7 +177,7 @@ plot_multiple_imgs(Amat, plt_wnd = c(3,4))
 
 # Run ---------------------------------------------------------------------
 g = 2
-UpdateSig2X = FALSE;UpdateSig2A = FALSE;
+UpdateSig2X = TRUE;UpdateSig2A = FALSE;
 Updatec = TRUE; Updategamma = TRUE
 UpdatePG = TRUE
 pb = txtProgressBar(min = 2, max = G, initial = 2, style = 3) 
@@ -298,16 +323,17 @@ for(t in 1:Ttot){
 
 Afinal = Particles_PG[[G]]$Amat_k; dim(Afinal)
 Zfinal = Particles_PG[[G]]$Zmat_k; dim(Zfinal)
+par(mfrow = c(3,2), mar = c(2,2,2,1), bty = "l")
 for(i in 1:nrow(Afinal)){
   # plot figure
-  par(mfrow = c(1,2), mar = c(2,2,2,1), bty = "l")
   res_t_vec = Afinal[i,]
   res_t = matrix(data = res_t_vec, nrow = di, ncol = di, byrow = F)
   plot_img( res_t,center_value = NULL, col.lower = "grey95",col.upper = "grey10",
-            horizontal = F, main = paste0("A[",i,"]") )
+            horizontal = F, main = paste0("A[",i,",]") )
   
   # plot survival path
-  plot(x = 1:Ttot, y = Zfinal[,i], pch = 16, xlab = "", ylab = "")
+  par(mar = c(4,2,4,1),  mgp = c(1.5,0.5,0), bty = "l")
+  plot(x = 1:Ttot, y = Zfinal[,i], pch = 16, xlab = "Time", ylab = "")
   segments(x0 = 1:Ttot, x1 = 1:Ttot, y0 = rep(0,Ttot), y1 = Zfinal[,i])
 }
 

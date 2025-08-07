@@ -66,7 +66,7 @@ double log_stable_sum(const Rcpp::NumericVector& a, const bool is_log){
 
 // [[Rcpp::export]]
 MyTraits::MatCol sample_A( const int& K, const MyTraits::VecCol& x, const MyTraits::VecCol& mu0, 
-													 const double& sig2_X, const double& sig2_A  )
+													 const double& sig2_X, const double& sig2_A, const int& seed  )
 {
 
 	int D(x.size() ); // problem size
@@ -74,7 +74,13 @@ MyTraits::MatCol sample_A( const int& K, const MyTraits::VecCol& x, const MyTrai
 		return(MyTraits::MatCol(0,D));
 	if(D <= 0)
 		throw std::runtime_error("Error in sample_A: invalid number of cols (D)");
+
+	if(seed == 0)
+		throw std::runtime_error("Error in sample_A: the seed can not be equal to 0");
+
+
 	// Define basic quantities
+	sample::GSL_RNG random_engine(seed); // GSL random engine to sample from random distribution
 	MyTraits::MatCol Ones_mat(MyTraits::MatCol::Constant(K,K,1.0));
 	MyTraits::VecCol Ones_vec(MyTraits::VecCol::Constant(K,1.0));
 	MyTraits::MatCol Id(MyTraits::MatCol::Identity(K,K));
@@ -95,7 +101,7 @@ MyTraits::MatCol sample_A( const int& K, const MyTraits::VecCol& x, const MyTrai
 	for(std::size_t ii=0; ii < D; ii++ ){
 		MyTraits::VecCol mean = Atilde_j(ii) * Ones_vec; // Atilde_j(ii) is repeated K times
 		MyTraits::MatCol Sigma{sig2_X*Omega_inv}; // scale covariance matrix
-		Anew.col(ii) = rmv(mean, Sigma); // j-th element for all K features
+		Anew.col(ii) = rmv(random_engine, mean, Sigma); // j-th element for all K features
 	}
 
 	return( Anew );

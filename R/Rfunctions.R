@@ -60,15 +60,22 @@ plot_img = function(Mat,
   colnames(Mat) = 1:p_col
   rownames(Mat) = 1:p_row
 
-  par(mar = c(5.1, 4.1, 4.1, 2.1), mgp = c(3, 1, 0))
+  # par(mar = c(5.1, 4.1, 4.1, 2.1), mgp = c(3, 1, 0))
+  par(mar = c(0,0,2,4), mgp = c(1,0, 0))
   if (horizontal) {
     fields::image.plot(Mat, axes = F, horizontal = T, main = main, 
                        col = colorTable, breaks = brks, xlab = x_label, 
+                       legend.width = 0.5,    # width of the legend bar
+                       bigplot = c(0.05, 0.80, 0.1, 0.9),  # Adjusts the main plot to leave less room
+                       smallplot = c(0.82, 0.84, 0.1, 0.9),
                        ylab = y_label)
   }
   else {
     fields::image.plot(Mat, axes = F, horizontal = FALSE, 
                        main = main, col = colorTable, breaks = brks, xlab = x_label, 
+                       legend.width = 0.5,    # width of the legend bar
+                       bigplot = c(0.05, 0.80, 0.1, 0.9),  # Adjusts the main plot to leave less room
+                       smallplot = c(0.82, 0.84, 0.1, 0.9),
                        ylab = y_label)
   }
   box()
@@ -93,6 +100,22 @@ plot_multiple_imgs = function(mat, plt_wnd = c(3,4),center_value = NULL){
     plot_img(mean_t, center_value = NULL, col.lower = "grey95",col.upper = "grey10",
              horizontal = F, main = paste0(" i = ",i))  
   }
+}
+
+
+# This function maps a positive integer number in a relative number (integer with sign)
+map_to_Z = function(n){
+  if(n %% 2 == 0)
+    n/2
+  else
+   -(n+1)/2
+}
+# This function maps a relative number (integer with sign) in a positive integer number 
+map_to_N = function(z){
+  if( z < 0 )
+    (2*abs(z) - 1)
+  else
+    2*abs(z)
 }
 
 # BetaBernoulli - Moving images --------------------------------------------------
@@ -276,7 +299,8 @@ choose_propose_thinning <- function(use_VS = TRUE) {
 SeqMonteCarlo = function(X,N,D,Ttot,
                          M1,Psurv,sigma2_A,sigma2_X,
                          mu0 = rep(0,D),
-                         use_VS = TRUE){
+                         use_VS = TRUE, 
+                         seed0 = 42){
   
   thinning_func = choose_propose_thinning(use_VS)
   # Define structure to store particles during the filtering
@@ -299,8 +323,9 @@ SeqMonteCarlo = function(X,N,D,Ttot,
   scale_mean_post = sigma2_A / (sigma2_A + sigma2_X)
   scale_var_post  = sigma2_A*sigma2_X / (sigma2_A + sigma2_X)
   for(k in 1:N){
+    seed_kt = ceiling(seed0 * k * t  * runif(n=1,min = 1, max = 100))
     Nnew   = rpois(n = 1, lambda = M1)
-    values = sample_A(Nnew, X[t,], mu0, sigma2_X, sigma2_A  )    
+    values = sample_A(Nnew, X[t,], mu0, sigma2_X, sigma2_A, seed_kt  )    
     ## OLD
     # values = matrix(0,nrow = Nnew, ncol = D)
     # for(j in 1:D){
@@ -333,6 +358,7 @@ SeqMonteCarlo = function(X,N,D,Ttot,
     
     # b) Sample the particles
     for(k in 1:N){
+      seed_kt = ceiling(seed0 * k * t * runif(n=1,min=1,max = 100))
       j = A[t-1,k] # parent index
       
       # Thinning part:
@@ -355,7 +381,7 @@ SeqMonteCarlo = function(X,N,D,Ttot,
       # Innovation:
       Xstar  = X[t,] - colSums(Particles[[j]][[t-1]]$active_values)
       Nnew   = rpois(n = 1, lambda = M1)
-      values = sample_A(Nnew, Xstar, mu0, sigma2_X, sigma2_A  )
+      values = sample_A(Nnew, Xstar, mu0, sigma2_X, sigma2_A, seed_kt  )
       ## OLD
       # values = matrix(0,nrow = Nnew, ncol = D)
       # for(jj in 1:D){
@@ -461,7 +487,9 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
                                       M1,Psurv,sigma2_A,sigma2_X,
                                       mu0 = rep(0,D),
                                       proposal_Nnew_1T = NULL,
-                                      use_VS = TRUE){
+                                      use_VS = TRUE,
+                                      seed0 = 42)
+{
   
   thinning_func = choose_propose_thinning(use_VS)
   # Define structure to store particles during the filtering
@@ -482,11 +510,13 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
   # Time 1
   # a) Sample the particles
   t  = 1
+  # cat("\n ++++++ t = ",t," ++++++ \n")
   scale_mean_post = sigma2_A / (sigma2_A + sigma2_X)
   scale_var_post  = sigma2_A*sigma2_X / (sigma2_A + sigma2_X)
   
   # cat("\n Part. fissa: ",Bfix[t],"\n")
   for(k in 1:N){
+    seed_kt = ceiling(seed0 * k * t * runif(n=1, min = 1, max = 100) )
     # cat("\n Part. #",k,"; ")
     if( (!is.null(Bfix)) && (k == Bfix[t]) ){
       # cat(" Fissa!!! ")
@@ -496,6 +526,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
     }else{
       
       if(!is.null(proposal_Nnew_1T)){
+        cat("\n","Dentro alla nuova proposal","\n")
         disc_adapt_prop = proposal_Nnew_1T[t,]
         disc_adapt_prop = table(disc_adapt_prop)
         Kproposal_ind = sample(1:length(disc_adapt_prop), size = 1, prob = disc_adapt_prop)
@@ -507,7 +538,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
 
       # Draw a new particle
       Nnew   = ifelse(runif(1)<0.75, Kprop1, Kprop2)
-      values = sample_A(Nnew, X[t,], mu0, sigma2_X, sigma2_A  ) 
+      values = sample_A(Nnew, X[t,], mu0, sigma2_X, sigma2_A, seed_kt  ) 
       Particles[[k]][[t]]$active_values   = values
       Particles[[k]][[t]]$Nnew            = Nnew
       if(Nnew > 0)
@@ -533,6 +564,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
     # b) Sample the particles
     # cat("\n Part. fissa: ",Bfix[t],"\n")
     for(k in 1:N){
+      seed_kt = ceiling(seed0 * k * t * runif(n=1, min = 1, max = 100) )
       # cat("\n Part. #",k,"; ")
       j = A[t-1,k] # parent index
       # cat(" genitore",j)
@@ -590,7 +622,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
         Nnew   = ifelse(runif(1)<0.75, Kprop1, Kprop2)
         
         # cat("; Nnew = ",Nnew)
-        values = sample_A(Nnew, c(Xstar), mu0, sigma2_X, sigma2_A)
+        values = sample_A(Nnew, c(Xstar), mu0, sigma2_X, sigma2_A, seed_kt)
         
         # Assemble thinning + innovation:
         if(n_surv > 0){
@@ -661,25 +693,21 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
     return(res)
   }else{
     
-    Zmat_k_old = matrix(0, nrow = Ttot, ncol = nrow(Amat_k))
-    Zmat_k = matrix(0,nrow = Ttot, ncol = nrow(Amat_k))
+    Zmat_k = matrix(0, nrow = Ttot, ncol = nrow(Amat_k))
     t = 1
     if(Nnew_paths_k[t] > 0){
-      Zmat_k_old[t, 1:cum_Ntot_k[1] ] = 1
-      Zmat_k[t,Path_k[[t]]$label_actives] = 1 
+      Zmat_k[t, 1:cum_Ntot_k[1] ] = 1
     }
     for(t in 2:Ttot){
       # Time t (2...Ttot)
-      Zmat_k[t,Path_k[[t]]$label_actives] = 1
-      
       if(Nnew_paths_k[t] > 0)
-        Zmat_k_old[t, (cum_Ntot_k[t-1]+1):(cum_Ntot_k[t])] = 1
+        Zmat_k[t, (cum_Ntot_k[t-1]+1):(cum_Ntot_k[t])] = 1
       
-      Nsurvived_old = length(which(Zmat_k_old[t-1,] == 1))
-      submat = matrix( Zmat_k_old[,which(Zmat_k_old[t-1,] == 1)],
+      Nsurvived_old = length(which(Zmat_k[t-1,] == 1))
+      submat = matrix( Zmat_k[,which(Zmat_k[t-1,] == 1)],
                        nrow = Ttot, ncol = Nsurvived_old)
       submat[t, Path_k[[t]]$survived ] = 1
-      Zmat_k_old[,which(Zmat_k_old[t-1,] == 1)] = submat
+      Zmat_k[,which(Zmat_k[t-1,] == 1)] = submat
     }
     
     res = list("Zmat_k" = Zmat_k,
@@ -711,7 +739,8 @@ CondSMC = function( X,N,D,Ttot,
                     M1,Psurv,
                     sigma2_A,sigma2_X,zeta, # these form theta
                     proposal_Nnew_1T = NULL,
-                    use_VS = FALSE){
+                    use_VS = FALSE,
+                    seed0 = 42){
   
   thinning_func = choose_propose_thinning(use_VS)
   # Define structure to store particles during the filtering
@@ -734,7 +763,7 @@ CondSMC = function( X,N,D,Ttot,
   # Time 1
   # a) Sample the particles
   t  = 1
-  cat("\n --------- \n t = ",t,"\n")
+  # cat("\n --------- \n t = ",t,"\n")
   for(k in 1:N){
     # cat("\n --------- \n")
     if( (!is.null(Bfix)) && (k == Bfix[t]) ){
@@ -751,9 +780,10 @@ CondSMC = function( X,N,D,Ttot,
       
       # For each group h=1,...,H
       for(h in 1:H){
-        
+        seed_kth = ceiling(seed0 * k * t * h * runif(n=1,min = 1,max = 100))
         # Discrete adaptive proposal for Nnew_h
         if(!is.null(proposal_Nnew_1T)){
+          cat("\n Dentro alla nuova proposal! \n")
           disc_adapt_prop = proposal_Nnew_1T[t,]
           disc_adapt_prop = table(disc_adapt_prop)
           Kproposal_ind = sample(1:length(disc_adapt_prop), size = 1, prob = disc_adapt_prop)
@@ -763,7 +793,7 @@ CondSMC = function( X,N,D,Ttot,
           Kprop1 <- Kprop2 <- rpois(n = 1, lambda = M1)
         }
         Nnew_h = ifelse(runif(1)<0.75, Kprop1, Kprop2)
-        values_h = sample_A(   Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
+        values_h = sample_A(   Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A, seed_kth ) # new featues in group h
         log_w_h = log_dmarg_img(Nnew_h,X[t,], zeta[[h]], sigma2_X, sigma2_A ) # log un-norm weight in group h
         # cat("\n h = ",h,"; Nnew_h = ",Nnew_h,"; log_w_h = ",log_w_h)
         # Assemble the different groups
@@ -775,11 +805,12 @@ CondSMC = function( X,N,D,Ttot,
         }
         log_w = log_w + log_w_h
       }
-      
+
       Particles[[k]][[t]]$active_values = values
       Particles[[k]][[t]]$Nnew          = Nnew
       Particles[[k]][[t]]$gr_card       = gr_card
       Particles[[k]][[t]]$gr_alloc      = gr_alloc
+      # cat("\n t = ",t,"; k = ",k,"; #new = ",Nnew,"; alloc: ",Particles[[k]][[t]]$gr_alloc,"\n")
       if(Nnew > 0){
         Particles[[k]][[t]]$survived  = seq(1,Nnew)
       }
@@ -796,7 +827,7 @@ CondSMC = function( X,N,D,Ttot,
   # Time t (t = 2,...,Ttot)
   t = 2
   for(t in 2:Ttot){
-    cat("\n --------- \n t = ",t,"\n")
+    # cat("\n --------- \n t = ",t,"\n")
     # a) Sample the parent node
     A[t-1,] = sample(1:N, size = N, W[t-1,], replace = TRUE)
     if( all(Bfix > 0) )
@@ -809,6 +840,7 @@ CondSMC = function( X,N,D,Ttot,
       
       j = A[t-1,k] # parent index
       Xstar  = X[t,] 
+      log_prod_bern <- log_prop_thin <- 0
       if((!is.null(Bfix)) && (k == Bfix[t])){
         # Compute Xstar
         if(  !is.null( nrow(Particles[[j]][[t-1]]$active_values))  )
@@ -873,6 +905,8 @@ CondSMC = function( X,N,D,Ttot,
         Nnew = 0; log_w = 0; gr_alloc = c(); 
         values = matrix(0,nrow = 0, ncol = D)
         for(h in 1:H){
+          seed_kth = ceiling(seed0 * k * t * h * runif(n=1,min = 1, max = 100))
+          
           # Discrete adaptive proposal for Nnew_h
           if(!is.null(proposal_Nnew_1T)){
             disc_adapt_prop = proposal_Nnew_1T[t,]
@@ -888,7 +922,7 @@ CondSMC = function( X,N,D,Ttot,
           # values_h = sample_A(Nnew_h, X[t,], zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
           # log_w_h = log_dmarg_img(Nnew_h,X[t,],zeta[[h]],sigma2_X,sigma2_A ) # log un-norm weight in group h
           
-          values_h = sample_A(    Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # new featues in group h
+          values_h = sample_A(    Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A, seed_kth ) # new featues in group h
           log_w_h = log_dmarg_img(Nnew_h, Xstar, zeta[[h]], sigma2_X, sigma2_A ) # log un-norm weight in group h
           
           # cat("\n h = ",h,"; Nnew_h = ",Nnew_h,"; log_w_h = ",log_w_h)
@@ -919,6 +953,7 @@ CondSMC = function( X,N,D,Ttot,
         
       }
       
+      # cat("\n t = ",t,";k = ",k,";#new = ",Nnew,";n_surv = ",n_surv,";alloc: ",Particles[[k]][[t]]$gr_alloc,"\n")
       # Compute the un-normalized weights
       log_w_mat[t,k] = log_w + log_prod_bern - log_prop_thin
     }
@@ -956,7 +991,6 @@ CondSMC = function( X,N,D,Ttot,
     if(nuove > 0){
       if(nrow(Mat)-nuove+1 <= 0)
         stop("Unexprected behaviour")
-      
       Amat_k = rbind( Mat[(nrow(Mat)-nuove+1):nrow(Mat),] , Amat_k)
       gr_alloc_k = c(tail(Path_k[[t]]$gr_alloc, nuove), gr_alloc_k)
     }
@@ -1050,7 +1084,7 @@ CondSMC = function( X,N,D,Ttot,
 r_fullcond_zeta = function( data, 
                             gr_alloc_old, # size: nrow(data); 
                             centers_old,  # size; length(table(gr_alloc_data))
-                            sig2_A, sig2_ker, 
+                            sig2_A, sig2_ker, Lambda,
                             updateGrAlloc = FALSE, 
                             updateCenters = FALSE, 
                             upNcenters = FALSE )
@@ -1063,7 +1097,6 @@ r_fullcond_zeta = function( data,
     stop("The number of data does not match with the length of the group labels")
   if(sig2_A < 0 || sig2_ker < 0)
     stop("Negative variance")
-  
   
   # re-order input labels
   Hold = length(table(gr_alloc_old)) # num. allocated groups
@@ -1089,7 +1122,23 @@ r_fullcond_zeta = function( data,
   
   # Update the number of centers
   if(upNcenters){
-    Hstar_temp = rpois(n=1,lambda = 1) # A caso, da modificare
+    z = map_to_Z(Hstar_old); # map the current value of Hstar in Z
+    support_proposal = c((-5):(-1),1:5)
+    Uproposal = sample( support_proposal, size = 1 )  #draw uniform proposal from -proposal to proposal expect 0
+    temp = ifelse(runif(1) < 0.5, z,-z) # proposal step
+    zproposal = Uproposal + temp # complete proposal step
+    Hproposal = map_to_N(zproposal)
+    
+    # Compute log probability of accepting the move
+    log_alpha = ( Hproposal - Hstar_old )*log(Lambda) + 
+                lfactorial(Hstar_old) - lfactorial(Hproposal) + 
+                (n-1) * ( log(Hstar_old+Hold) - log(Hproposal+Hold) )
+    # Acceptance-rejection move
+    Hstar_temp = ifelse(runif(1) < exp(log_alpha), Hproposal, Hstar_old )
+    # cat("\n current: ",Hstar_old,"; proposed: ",Hproposal,"; prob = ",log_alpha,"\n")
+    # Check
+    if(Hstar_temp < 0)
+      stop("Hstar_temp can not be negative")
   }else{
     Hstar_temp = Hstar_old
   }
