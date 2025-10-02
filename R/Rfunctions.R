@@ -487,8 +487,7 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
                                       M1,Psurv,sigma2_A,sigma2_X,
                                       mu0 = rep(0,D),
                                       proposal_Nnew_1T = NULL,
-                                      use_VS = TRUE,
-                                      seed0 = 42)
+                                      use_VS = TRUE)
 {
   
   thinning_func = choose_propose_thinning(use_VS)
@@ -516,7 +515,8 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
   
   # cat("\n Part. fissa: ",Bfix[t],"\n")
   for(k in 1:N){
-    seed_kt = ceiling(seed0 * k * t * runif(n=1, min = 1, max = 100) )
+    seed_kt = sample(1:999999,size = 1) #as.integer((seed0 * k * t * runif(1)) %% (2^31 - 1))
+    # cat("\n k = ",k,"; t = ",t,"; seed_kt = ",seed_kt,"; ")
     # cat("\n Part. #",k,"; ")
     if( (!is.null(Bfix)) && (k == Bfix[t]) ){
       # cat(" Fissa!!! ")
@@ -564,7 +564,8 @@ Conditional_SeqMonteCarlo = function( X,N,D,Ttot,
     # b) Sample the particles
     # cat("\n Part. fissa: ",Bfix[t],"\n")
     for(k in 1:N){
-      seed_kt = ceiling(seed0 * k * t * runif(n=1, min = 1, max = 100) )
+      seed_kt = sample(1:999999,size = 1) #as.integer((seed0 * k * t * runif(1)) %% (2^31 - 1))
+      # cat("\n k = ",k,"; t = ",t,"; seed_kt = ",seed_kt,"; ")
       # cat("\n Part. #",k,"; ")
       j = A[t-1,k] # parent index
       # cat(" genitore",j)
@@ -739,8 +740,7 @@ CondSMC = function( X,N,D,Ttot,
                     M1,Psurv,
                     sigma2_A,sigma2_X,zeta, # these form theta
                     proposal_Nnew_1T = NULL,
-                    use_VS = FALSE,
-                    seed0 = 42){
+                    use_VS = FALSE){
   
   thinning_func = choose_propose_thinning(use_VS)
   # Define structure to store particles during the filtering
@@ -780,7 +780,7 @@ CondSMC = function( X,N,D,Ttot,
       
       # For each group h=1,...,H
       for(h in 1:H){
-        seed_kth = ceiling(seed0 * k * t * h * runif(n=1,min = 1,max = 100))
+        seed_kth = sample(1:999999,size = 1) #as.integer((seed0 * h * k * t * runif(1)) %% (2^31 - 1))
         # Discrete adaptive proposal for Nnew_h
         if(!is.null(proposal_Nnew_1T)){
           cat("\n Dentro alla nuova proposal! \n")
@@ -905,7 +905,7 @@ CondSMC = function( X,N,D,Ttot,
         Nnew = 0; log_w = 0; gr_alloc = c(); 
         values = matrix(0,nrow = 0, ncol = D)
         for(h in 1:H){
-          seed_kth = ceiling(seed0 * k * t * h * runif(n=1,min = 1, max = 100))
+          seed_kth = sample(1:999999,size = 1) #as.integer((seed0 * h * k * t * runif(1)) %% (2^31 - 1))
           
           # Discrete adaptive proposal for Nnew_h
           if(!is.null(proposal_Nnew_1T)){

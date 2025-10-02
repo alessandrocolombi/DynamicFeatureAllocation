@@ -74,21 +74,21 @@ for(t in 1:Ttot){
 
 # Options -------------------------------------------
 
-seed = 271296
+seed = 4433431
 set.seed(seed)
 
-N  = 500
-G  = 50 + 1
+N  = 1000
+G  = 100 + 1
 M1 = 0.25
 use_VS = TRUE
-Lambda = 10
+Lambda = 1
 H  = 4 # number of centers
 sigma2_ker = 1 # variance base measure
 
 
-par_sig2X = set_par_invgamma(media = 0.01, var = 0.1)
-par_sig2A = set_par_invgamma(media = 0.01, var = 2)
-par_gamma = set_par_gamma(media = 0.5,     var = 0.001)
+par_sig2X = c(2,0.001) #set_par_invgamma(media = 0.01, var = 0.1)
+par_sig2A = set_par_invgamma(media = 1e-4, var = 2)
+par_gamma = set_par_gamma(media = 0.5,     var = 0.1)
 par_c     = set_par_gamma(media = 4,       var = 1)
 
 # Gibbs sampler structures:
@@ -113,7 +113,7 @@ Ktot = rep(NA,G)
 
 
 # Initialization
-setPsurv = 0.5
+setPsurv = 0.25
 setM1    = 0.1
 
 var_prop[1] = 0.1 # initial adaptive variance
@@ -123,7 +123,7 @@ BetaProcess_params[,3]  = 0 # set sigma = 0 for all iterations
 M1_mcmc[1]    = computeM1(BetaProcess_params[1,])
 Psurv_mcmc[1] = computePsurv(BetaProcess_params[1,])
 
-sigma2_XA_mcmc[1,1] = sig2_X # initial value for sigma2_X
+sigma2_XA_mcmc[1,1] = 0.01#sig2_X # initial value for sigma2_X
 sigma2_XA_mcmc[1,2] = 0.5 #10  # initial value for sigma2_A
 
 # H_mcmc[1] = H; Hstar_mcmc[1] = 0
@@ -144,8 +144,7 @@ fit0 = Conditional_SeqMonteCarlo( X = X, N = N, D = D, Ttot = Ttot,
                                   sigma2_X = sigma2_XA_mcmc[1,1],
                                   sigma2_A = sigma2_XA_mcmc[1,2],
                                   proposal_Nnew_1T = proposal_Nnew_1T,
-                                  use_VS = use_VS,
-                                  seed0 = seed)
+                                  use_VS = use_VS)
 
 temp = sapply(fit0$Path_k[1:Ttot],function(x) x$Nnew)
 temp
@@ -177,10 +176,14 @@ zetas_mcmc[[1]] = lapply(1:H_mcmc[1], function(h){zeta0[h,]})
 Particles_PG[[1]]$gr_alloc_k = km$cluster
 
 
+cat("\n Check seed: #1 = ",sum(fit0$Amat_k),"; #2 = ",sum(zeta0))
+
 # Set initial value for sig2A
 sigma2_XA_mcmc[1,2] = 1e-4
 
 # Run (g >= 2) ---------------------------------------------------
+# Set initial value for sig2A and sig2X
+sigma2_XA_mcmc[1,] = c(0.1,0.001)#c(sig2X,1e-4)
 
 g = 2
 UpdateSig2X = TRUE; UpdateSig2A = FALSE
@@ -197,7 +200,11 @@ for(g in 2:G){
   Amat        = Particles_PG[[g-1]]$Amat_k
   Ktot[g-1]   = ifelse(is.null(nrow(Amat)), 0, nrow(Amat))
   
-  cat("\n ----------- g = ",g,";K = ",Ktot[g-1],";sig2x = ",sigma2_XA_mcmc[g-1,1],"\n")
+  cat("\n ----------- g = ",g,
+      ";K = ",Ktot[g-1],
+      ";sig2x = ",sigma2_XA_mcmc[g-1,1],
+      ";sig2A = ",sigma2_XA_mcmc[g-1,2],
+      "\n")
   if(Ktot[g-1] == 0)
     cat("\n Ktot[",g-1,"] è 0, speriamo vada tutto bene \n")
   
@@ -221,6 +228,7 @@ for(g in 2:G){
                    function(x){t(x-zetas_mcmc[[g-1]][[h]])%*%(x-zetas_mcmc[[g-1]][[h]])}) )
     }
     # suff_stat_A = sum( apply(Amat, 1, function(x){t(x)%*%x}) )
+    cat("\n suff_stat_A = ",suff_stat_A,"\n")
     sigma2_XA_mcmc[g,2] = r_fullcond_sigma2_A(par_sig2A[1], 
                                               par_sig2A[2], 
                                               D, 
@@ -309,8 +317,7 @@ for(g in 2:G){
                                sigma2_X = sigma2_XA_mcmc[g,1],
                                sigma2_A = sigma2_XA_mcmc[g,2],
                                zeta = zetas_mcmc[[g]], 
-                               use_VS = use_VS, 
-                               seed0 = seed)
+                               use_VS = use_VS)
   
   H_mcmc[g] = length( table(Particles_PG[[g]]$gr_alloc_k) ) 
 }
@@ -320,7 +327,7 @@ beepr::beep()
 # Analysis sig2X ----------------------------------------------------------------
 
 par(mfrow = c(1,1), mar = c(2,2,2,1), mgp = c(3,1,0), bty = "l")
-plot(sigma2_XA_mcmc[,1], type = "l")
+plot(sigma2_XA_mcmc[,1], type = "l", ylim = c(0,0.01))
 
 # Inference sigma2_X 
 brn = (G-1)/2
@@ -389,7 +396,9 @@ for(t in 1:Ttot){
 
 # Final estimated filtered density
 burnin = (G-1)/2
-result <- Reduce(`+`, lapply(Particles_PG[(G-burnin+1):(G)], function(x){x$mean_k}) )
+it_start = 2 # (G-burnin+1)
+it_end = 5
+result <- Reduce(`+`, lapply(Particles_PG[it_start:it_end], function(x){x$mean_k}) )
 result = result / length((G-burnin+1):(G))
 
 par(mfrow = c(3,4), mar = c(2,2,2,1), bty = "l")
@@ -409,7 +418,7 @@ for(t in 1:Ttot){
 save_img = FALSE
 if(save_img)
   pdf("img/zeta_est_mcmc2.pdf")
-for(g in 900:G){
+for(g in it_start:it_end){
   Hg = length(zetas_mcmc[[g]])
   par(mfrow = c(2,2), mar = c(2,2,2,1), bty = "l")
   for(i in 1:Hg){

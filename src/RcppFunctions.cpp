@@ -66,17 +66,17 @@ double log_stable_sum(const Rcpp::NumericVector& a, const bool is_log){
 
 // [[Rcpp::export]]
 MyTraits::MatCol sample_A( const int& K, const MyTraits::VecCol& x, const MyTraits::VecCol& mu0, 
-													 const double& sig2_X, const double& sig2_A, const int& seed  )
+													 const double& sig2_X, const double& sig2_A, const unsigned int& seed  )
 {
-
+	
 	int D(x.size() ); // problem size
 	if(K <= 0)
 		return(MyTraits::MatCol(0,D));
 	if(D <= 0)
 		throw std::runtime_error("Error in sample_A: invalid number of cols (D)");
 
-	if(seed == 0)
-		throw std::runtime_error("Error in sample_A: the seed can not be equal to 0");
+	if(seed <= 0)
+		throw std::runtime_error("Error in sample_A: the seed must be strictly positive");
 
 
 	// Define basic quantities
