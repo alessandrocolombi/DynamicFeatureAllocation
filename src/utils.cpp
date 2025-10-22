@@ -219,3 +219,37 @@ std::map<int,int> table_Rcpp(const Rcpp::IntegerVector& s)
 
     return res;
 }
+
+
+
+List classify_indices_cpp(const NumericVector& Z) 
+{
+  int Ttot = Z.size();
+
+  std::vector<int> idx_born;
+  std::vector<int> idx_surv;
+  std::vector<int> idx_noact;
+
+  // loop through elements
+  for (int t = 0; t < Ttot; t++) {
+    if (Z[t] > 0) {
+      // If here, the feature at time t is active
+      if (t == 0 || Z[t - 1] > 0) {
+        // born: first element = 1, or preceded by 0
+        idx_born.push_back(t);
+      } else {
+        // 1 not preceded by 0 → survivor
+        idx_surv.push_back(t);
+      }
+    } else {
+      // zero → no activity
+      idx_noact.push_back(t);
+    }
+  }
+
+  return List::create(
+    _["idx_born"] = idx_born,
+    _["idx_surv"] = idx_surv,
+    _["idx_noact"] = idx_noact
+  );
+}

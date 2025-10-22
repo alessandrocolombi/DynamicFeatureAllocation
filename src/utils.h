@@ -58,5 +58,7 @@ Eigen::MatrixXd myRowSlicing(const Eigen::MatrixXd& Mat, const std::vector<bool>
 // [[Rcpp::export]]
 std::map<int,int> table_Rcpp(const Rcpp::IntegerVector& s);
 
+// [[Rcpp::export]]
+List classify_indices_cpp(const NumericVector& Z);
 
 #endif

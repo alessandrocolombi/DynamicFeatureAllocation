@@ -12,6 +12,8 @@
 #include "utils.h"
 #include "mysample.h"
 
+#include "FC.h"
+
 
 using namespace Rcpp;
 
@@ -135,6 +137,12 @@ double log_dmarg_img( const int& K, const MyTraits::VecCol& x, const MyTraits::V
 }
 
 // --------------------------------------------------------------------------------------------
+// Truncated Gibbs Sampling for Topic Modeling
+// --------------------------------------------------------------------------------------------
+
+
+
+// --------------------------------------------------------------------------------------------
 // Test functions
 // --------------------------------------------------------------------------------------------
 
@@ -143,4 +151,5 @@ Rcpp::NumericVector prova(Rcpp::NumericVector x)
 {
   return x+x;
 }
+
 
