@@ -211,7 +211,6 @@ int sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double& t_
   }
 
   return 1;
-
 }
 
 int sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const MatCol& S, const MatUnsCol& N_tl, 
@@ -264,4 +263,143 @@ int sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const 
     }
   }
   return 1;
+}
+
+
+// This function implements the proposed update in Section B.4 of [C.Naik, F.Caron, J.Rousseau, Y.Teh, K.Palla] Bayesian Nonparametrics for Sparse Dynamic Networks (2023)
+int sample_hyparams(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol& S, 
+                    const double& phi_old, const double& gamma_old, const double& sigma_old, const double& b_old, 
+                    const double& t_sigma_gamma_old,
+                    const double& a_phi, const double& b_phi, 
+                    const double& a_gamma, const double& b_gamma, 
+                    const double& a_sigma, const double& b_sigma, 
+                    const double& a_beta, const double& b_beta, 
+                    const double& var_phi, const double& var_gamma, const double& var_sigma, const double& var_beta,
+                    bool UpdatePhi, bool UpdateGamma, bool UpdateSigma, bool UpdateBeta)
+{
+  sample::rnorm rnorm; // define callable object to generate random samples from a normal distribution
+  sample::runif runif; // define callable object to generate random samples from a uniform distribution
+
+  const int H = S.rows(); // Number of atoms
+  const int Ttot = S.cols(); // Time window
+  if(H <= 0)
+    throw std::runtime_error("Error in sample_hyparams: H must be >= 1 ");
+  if(Xi.cols() != Ttot)
+    throw std::runtime_error("Error in sample_hyparams: Xi.cols() != Ttot ");
+  if(Xi.rows() != H)
+    throw std::runtime_error("Error in sample_hyparams: Xi.rows() != H ");
+  if( phi_old <= 0 || b_old <= 0 || gamma_old <= 0)
+    throw std::runtime_error("Error in sample_hyparams: phi_old, b_old or gamma_old are null or negative ");
+  if( sigma_old < 0 || sigma_old >= 1)
+    throw std::runtime_error("Error in sample_hyparams: sigma_old is out of range");
+  if( t_sigma_gamma_old <= 0 || std::isnan(t_sigma_gamma_old) )
+    throw std::runtime_error("Error in sample_hyparams: t_sigma_gamma is out of range ");
+
+  // Sample proposed values
+  double phi_prime{phi_old};
+  double gamma_prime{gamma_old};
+  double sigma_prime{sigma_old};
+  double b_prime{b_old};
+  double t_sigma_gamma_prime{t_sigma_gamma_old};
+  
+  double lognew; // auxiliary
+  double logitnew; // auxiliary
+  if(UpdatePhi){
+    // Log-normal proposal
+    lognew = rnorm( engine, std::log(phi_old), std::sqrt(var_phi) );
+    phi_prime = std::exp(lognew);
+  }
+  if(UpdateGamma){
+    // Log-normal proposal
+    lognew = rnorm( engine, std::log(gamma_old), std::sqrt(var_gamma) );
+    gamma_prime = std::exp(lognew);
+  }
+  if(UpdateSigma){
+    // Logit-normal proposal
+    double logit_old = std::log( sigma_old ) - std::log( 1.0 - sigma_old );
+    logitnew = rnorm( engine, logit_old, std::sqrt(var_sigma) );
+    sigma_prime = 1.0/( 1 + std::exp(-logitnew) );
+  }
+  if(UpdateBeta){
+    // Log-normal proposal
+    lognew = rnorm( engine, std::log(b_old), std::sqrt(var_beta) );
+    phi_prime = std::exp(lognew);
+  }
+  if(UpdateGamma || UpdateSigma){
+    // Update t_gamma_sigma
+    t_sigma_gamma_prime = std::exp( 1.0/sigma_prime * ( std::log(sigma_prime*(double)H) - std::log(gamma_prime) )  );
+  }
+
+  // Compute acceptance prob.
+  double log_prop_phi   = a_phi*  ( std::log(phi_prime)  -std::log(phi_old)    ) - b_phi*(phi_prime-phi_old);
+  double log_prop_gamma = a_gamma*( std::log(gamma_prime)-std::log(gamma_old)  ) - b_gamma*(gamma_prime-gamma_old);
+  double log_prop_sigma = a_sigma*( std::log(sigma_prime)-std::log(sigma_prime)) + b_sigma*(std::log(1.0 - sigma_prime)-std::log(1.0 - sigma_prime)) ;
+  double log_prop_beta  = a_beta* ( std::log(b_prime)    -std::log(b_old)      ) - b_beta*(b_prime-b_old);
+
+  // Auxiliary quantities
+  double sumS0 = S.col(0).sum();
+  double sumXi0 = Xi.col(0).sum();
+  double sumS  = S.sum();
+  double sumXi = Xi.sum();
+
+  // Target ratio
+  double log_target = (double)H * (std::log(sigma_prime) - std::log(sigma_old) + std::lgamma(1.0-sigma_old) - std::lgamma(1.0-sigma_prime) );
+  log_target += (b_old+phi_old-b_prime-phi_prime)*sumS0;
+
+  log_target += (double)H * ( sigma_old*std::log(b_old+t_sigma_gamma_old) + 
+                              std::log( -gsl_expm1(sigma_old*( std::log(b_old) - std::log(b_old+t_sigma_gamma_old) ))  ) );
+  log_target -= (double)H * ( sigma_prime*std::log(b_prime+t_sigma_gamma_prime) + 
+                              std::log( -gsl_expm1(sigma_prime*( std::log(b_prime) - std::log(b_prime+t_sigma_gamma_prime) ))  ) );
+  
+  log_target += (sigma_old-sigma_prime)*sumS + (std::log(phi_prime)-std::log(phi_old))*sumXi;
+  log_target += (b_old + 2*phi_old - b_prime - 2.0*phi_prime)*(sumS - sumS0);
+
+  log_target += ( sigma_old  *(double)H*(double)(Ttot-1) - (sumXi-sumXi0) ) * std::log(b_old+phi_old+t_sigma_gamma_old);
+  log_target -= ( sigma_prime*(double)H*(double)(Ttot-1) - (sumXi-sumXi0) ) * std::log(b_prime+phi_prime+t_sigma_gamma_prime);
+
+  for(int t=0; t < Ttot; t++){
+    for(int l=0; l < H; l++){
+      double ynew = t_sigma_gamma_prime*S(l,t);
+      double yold = t_sigma_gamma_old*S(l,t);
+      log_target += std::log( -gsl_expm1(-ynew) ) - std::log( -gsl_expm1(-yold) );
+      if(t > 0){
+        log_target += std::lgamma( 1.0 - sigma_old + Xi(l,t-1) ) - std::lgamma( 1.0 - sigma_prime + Xi(l,t-1) );
+        log_target += std::log( sigma_prime - Xi(l,t-1) ) - std::log( sigma_old - Xi(l,t-1) );
+        // Final term in Equation (37) Naik:
+        double A_old = b_old + phi_old;
+        double t_old = t_sigma_gamma_old;
+        double x_old = sigma_old - Xi(l,t-1);
+        double A_prime = b_prime + phi_prime;
+        double t_prime = t_sigma_gamma_prime;
+        double x_prime = sigma_prime - Xi(l,t-1);
+
+        log_target += std::log( -gsl_expm1( x_old*(std::log(A_old)     - std::log(A_old+t_old)) ) );
+        log_target -= std::log( -gsl_expm1( x_prime*(std::log(A_prime) - std::log(A_prime+t_prime)) ) );
+      }
+
+    }
+  }
+
+  // Final log acceptance probability
+  double log_acc = log_target + log_prop_phi + log_prop_gamma + log_prop_sigma + log_prop_beta;
+
+  // Accept / Reject the move
+  double phi_res{phi_old};
+  double gamma_res{gamma_old};
+  double sigma_res{sigma_old};
+  double b_res{b_old};
+  double t_sigma_gamma_res{t_sigma_gamma_old};
+
+  double u = runif(engine);
+  if( std::log(u) < log_acc ){
+    phi_res = phi_prime;
+    gamma_res = gamma_res;
+    sigma_res = sigma_prime;
+    b_res = b_prime;
+    t_sigma_gamma_res = t_sigma_gamma_prime;
+  }
+
+  // return
+  return 1;
+
 }
