@@ -6,7 +6,11 @@ setwd(wd)
 Rcpp::sourceCpp("../../src/RcppFunctions.cpp")
 # sink()
 
+mycol = hcl.colors(n = 100, palette = "Greens", rev = TRUE)
 
+zipfs_decay = function(n,a){
+  sapply(1:n,function(i){i^{-a}})
+}
 
 # test -----------------------------------------------------------
 seed = 132332
@@ -33,31 +37,45 @@ Xi[3,15:23] = 40 * zipfs_decay(9,-a)
 Mean = Lambda %*% Xi
 D <- matrix(rpois(V * Ttot, lambda = as.vector(Mean)), nrow = V, ncol = Ttot)
 
-
-
-test_FC(Lambda,Xi,D,seed)
-
-
-
-dim(Xi)
-
-
-
 classify_indices <- function(Z) {
   # ensure Z is numeric (0/1)
   Z <- as.numeric(Z)
   Ttot <- length(Z)
   
   idx_born = c()
-  if(Z[1] == 1)
+  if(Z[1] > 0)
     idx_born = c(idx_born,1)
-  idx_born <- c(idx_born,which(Z == 1 & (c(1, head(Z, -1)) == 0)))   # 1s preceded by 0 or start
+  idx_born <- c(idx_born,which(Z > 0 & (c(1, head(Z, -1)) == 0)))   # 1s preceded by 0 or start
   
   idx_noact <- which(Z == 0)                             # all zeros
-  idx_surv <- which(Z == 1 & !(1:Ttot %in% idx_born))    # 1s that are not born
+  idx_surv <- which(Z > 0 & !(1:Ttot %in% idx_born))    # 1s that are not born
   
   list(idx_born = idx_born, idx_surv = idx_surv, idx_noact = idx_noact)
 }
+classify_indices(Xi)
+aa = apply(Xi, 1, classify_indices)
+
+delta = 0.5
+Lambda_itl = vector("list",Ktrue)
+Lambda_itl = lapply(Lambda_itl, function(x) {
+  matrix( 0, nrow = V, ncol = Ttot )
+})
+
+for(l in 1:Ktrue){
+  for(t in aa[[l]]$idx_born){
+    Lambda_itl[[l]][,t] = Lambda[,l]
+  }
+  for(t in aa[[l]]$idx_surv){
+    Lambda_itl[[l]][,t] = Lambda_itl[[l]][,t-1]
+  }
+  for(t in aa[[l]]$idx_noact){
+    temp = rgamma(n = V, shape = delta, rate = 1)
+    Lambda_itl[[l]][,t] = temp
+  }
+}
+
+
+
 Z1 <- c(1,1,0,0,0,1,1,1)
 Z2 <- c(1,1,0,0,0,0,0,0)
 Z3 <- c(0,1,1,0,0,0,0,1)
@@ -66,9 +84,54 @@ res1 <- classify_indices(Z1)
 res2 <- classify_indices(Z2)
 res3 <- classify_indices(Z3)
 
+res11 <- classify_indices_cpp(Z1)
+res22 <- classify_indices_cpp(Z2)
+res33 <- classify_indices_cpp(Z3)
 # Print results
-res1
-res2
-res3
+res1; res11
+
+res2; res22
+res3; res33
+
+
+D_itl = vector("list",Ktrue)
+D_itl = lapply(D_itl, function(x) {
+  matrix( 1:(V*Ttot), nrow = V, ncol = Ttot )
+})
+
+zeta_list <- lapply(1:Ktrue, function(l) {
+  Lambda[, l] %o% Xi[l,]   # outer product: V x T
+})
+zeta <- array(unlist(zeta_list), dim = c(V, Ttot, Ktrue))
+
+D_itl = array(0,dim = c(V,Ttot,Ktrue))
+for(i in 1:V){
+  for(t in 1:Ttot){
+    w_it = zeta[i,t,]
+    if(sum(w_it)>0){
+      w_it = w_it/sum(w_it)
+      idx_it = sample(1:Ktrue, size = D[i,t], replace = TRUE, prob = w_it)
+      D_itl[i,t,] = tabulate(idx_it,nbins = 3)
+    }
+  }
+}
+
+N_tl = apply(D_itl, c(2,3), sum)
+
+D_itl_list = vector("list",3)
+D_itl_list[[1]] = D_itl[,,1]
+D_itl_list[[2]] = D_itl[,,2]
+D_itl_list[[3]] = D_itl[,,3]
+
+Test_sample_Ditl(Lambda_itl, Xi, D, seed)
+Test_sample_Lambdaitl(D_itl_list, Xi, delta, seed)
+
+
+
+D_itl[[1]]
+
+
+
+
 
 

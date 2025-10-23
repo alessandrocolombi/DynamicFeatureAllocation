@@ -10,7 +10,7 @@ void find_indices(const VecIntCol& Z, std::vector<int>& idx_born, std::vector<in
   for (int t = 0; t < Ttot; t++) {
     if (Z[t] > 0) {
       // If here, the feature at time t is active
-      if (t == 0 || Z[t - 1] > 0) {
+      if (t == 0 || Z[t - 1] == 0) {
         // born: first element = 1, or preceded by 0
         idx_born.push_back(t);
       } else {
@@ -25,10 +25,7 @@ void find_indices(const VecIntCol& Z, std::vector<int>& idx_born, std::vector<in
 }
 
 
-int sample_Ditl(sample::GSL_RNG const & engine,
-				        const std::vector<MatCol>& Lambda_itl, 
-				        const MatIntCol& Xi, 
-				        const MatIntCol& D) 
+int sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_itl, const MatIntCol& Xi, const MatIntCol& D) 
 {
   sample::rmultinomial<VecUnsCol> rmultinomial; // define callable object to generate random samples from a Multivariate distribution
 
@@ -83,7 +80,9 @@ int sample_Ditl(sample::GSL_RNG const & engine,
 }
 
 
-int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatUnsCol>& D_itl, const MatIntCol& Xi, const double& delta)
+// It should be std::vector<MatUnsCol>& D_itl
+// but for testing purposes I am using std::vector<MatCol>& D_itl
+int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatCol>& D_itl, const MatIntCol& Xi, const double& delta)
 {
   sample::rgamma rgamma; // define callable object to generate random samples from a gamma distribution
 
@@ -141,5 +140,128 @@ int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatUnsCo
         Lambda_itl[l].col(t) = temp ; // save draw from the prior
       }
   }
+
+  return 1;
 }
 
+int sample_Stl(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol& U, const double& phi, const double& sigma, const double& b)
+{
+  sample::rgamma rgamma; // define callable object to generate random samples from a gamma distribution
+
+  const int H = Xi.rows(); // Number of atoms
+  const int Ttot = Xi.cols(); // Time window
+  if(H <= 0)
+    throw std::runtime_error("Error in sample_Stl: H must be >= 1 ");
+  if(U.rows() != H)
+    throw std::runtime_error("Error in sample_Stl: U.rows() != H ");
+  if(U.cols() != Ttot)
+    throw std::runtime_error("Error in sample_Stl: U.cols() != Ttot ");
+  if( phi <= 0 || b <= 0 )
+    throw std::runtime_error("Error in sample_Stl: phi or b are null or negative ");
+  if( sigma < 0 || sigma >= 1)
+    throw std::runtime_error("Error in sample_Stl: sigma is out of range");
+
+  MatCol S{ MatCol::Zero(H,Ttot) }; // inizialize main object
+  for(int l=0; l < H; l++){
+    for(int t=0; t < Ttot; t++){
+      double shape = Xi(l,t) - sigma;
+      double rate = U(l,t) + b + phi;
+      if(t > 0){
+        shape += Xi(l,t-1);
+        rate += phi;
+      }
+      if( shape <= 0 || rate <= 0 || std::isnan(shape) || std::isnan(rate) )
+          throw std::runtime_error("Error in sample_Stl, invalid shape or rate");
+      S(l,t) = rgamma(engine, shape, 1.0/rate);
+
+    }
+  }
+  return 1;
+}
+
+int sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double& t_sigma_gamma)
+{
+  sample::runif runif; // define callable object to generate random samples from a Uniform distribution
+
+  const int H = S.rows(); // Number of atoms
+  const int Ttot = S.cols(); // Time window
+  if(H <= 0)
+    throw std::runtime_error("Error in sample_Utl: H must be >= 1 ");
+  if( t_sigma_gamma <= 0 || std::isnan(t_sigma_gamma) )
+    throw std::runtime_error("Error in sample_Utl: t_sigma_gamma is out of range ");
+
+  MatCol U{ MatCol::Zero(H,Ttot) }; // inizialize main object
+
+  auto invCDF = [t_sigma_gamma](double s, double y){
+    double temp = - (y * ( 1.0 - exp(-s*t_sigma_gamma) ));
+    temp = gsl_log1p( temp );
+    temp = - (1.0/s)*temp;
+    return temp;
+  };
+
+  for(int l=0; l < H; l++){
+    for(int t=0; t < Ttot; t++){
+      double Y = runif(engine);
+      double temp = invCDF(S(l,t), Y);
+      if( temp <= 0 || std::isnan(temp) ){
+        Rcpp::Rcout<<"t = "<<t<<"; l = "<<l<<"temp = "<<temp<<std::endl;
+        throw std::runtime_error("Error in sample_Utl: U is out of range ");
+      }
+    }
+  }
+
+  return 1;
+
+}
+
+int sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const MatCol& S, const MatUnsCol& N_tl, 
+                 const double& phi, const double& sigma, const double& b, const double& t_sigma_gamma)
+{
+  sample::rpoisson rpoisson; // define callable object to generate random samples from a gamma distribution
+  sample::runif runif; // define callable object to generate random samples from a Uniform distribution
+
+  const int H = S.rows(); // Number of atoms
+  const int Ttot = S.cols(); // Time window
+  if(H <= 0)
+    throw std::runtime_error("Error in sample_Xi_tl: H must be >= 1 ");
+  if(Xi_old.cols() != Ttot)
+    throw std::runtime_error("Error in sample_Xi_tl: Xi_old.cols() != Ttot ");
+  if(Xi_old.rows() != H)
+    throw std::runtime_error("Error in sample_Xi_tl: Xi_old.rows() != H ");
+  if(N_tl.rows() != Ttot)
+    throw std::runtime_error("Error in sample_Xi_tl: N_tl.rows() != Ttot ");
+  if(N_tl.cols() != H)
+    throw std::runtime_error("Error in sample_Xi_tl: N_tl.cols() != H ");
+  if( phi <= 0 || b <= 0 )
+    throw std::runtime_error("Error in sample_Xi_tl: phi or b are null or negative ");
+  if( sigma < 0 || sigma >= 1)
+    throw std::runtime_error("Error in sample_Xi_tl: sigma is out of range");
+  if( t_sigma_gamma <= 0 || std::isnan(t_sigma_gamma) )
+    throw std::runtime_error("Error in sample_Xi_tl: t_sigma_gamma is out of range ");
+
+  MatIntCol Xi{MatIntCol::Zero(H,Ttot)}; // initialize main object
+
+  for(int l=0; l < H; l++){
+    for(int t=0; t < Ttot; t++){
+      int xi_prime = rpoisson(phi * S(l,t));
+      int xi_tl = Xi_old(l,t);
+      double log_R_tl = (double)xi_tl - (double)xi_prime + N_tl(t,l) * ( std::log((double)xi_prime) - std::log((double)xi_tl) );
+      if(t < Ttot - 1){
+        log_R_tl += std::log((double)xi_prime - sigma) - std::log((double)xi_tl - sigma) + std::lgamma(1.0 + (double)xi_tl - sigma) - std::lgamma(1.0 + (double)xi_prime - sigma);
+        log_R_tl += ((double)xi_prime - (double)xi_tl)*std::log( S(l,t+1) );
+        log_R_tl += std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_tl) - std::pow(b+phi,sigma-(double)xi_tl) ) - std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_prime) - std::pow(b+phi,sigma-(double)xi_prime) );
+      }
+      double u = runif(engine);
+      if(std::log(u) < log_R_tl ){
+        // accepted
+        Xi(l,t) = xi_prime;
+      }
+      else{
+        // rejected
+        Xi(l,t) = xi_tl;
+      }
+
+    }
+  }
+  return 1;
+}

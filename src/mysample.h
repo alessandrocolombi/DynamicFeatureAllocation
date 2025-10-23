@@ -182,7 +182,23 @@ namespace sample{ //use the sample:: namespace to avoid clashes with R or other 
     }
   };
 
-  	//Callable object to draw a sample from Multinomial(N;K,weights[0],...,weights[K-1]).
+  //Callable object to draw a sample from Poisson(lambda).
+  struct rpoisson{
+
+    //Gets the engine
+    //Poisson(lambda)
+    double operator()(GSL_RNG const & engine, double const & lambda)const{
+      return gsl_ran_poisson(engine(),lambda);
+    }
+
+    //Engine defaulted
+    //Poisson(lambda)
+    double operator()(double const & lambda)const{
+      return gsl_ran_poisson(GSL_RNG ()(), lambda);
+    }
+  };
+  
+  //Callable object to draw a sample from Multinomial(N;K,weights[0],...,weights[K-1]).
 	/*  What is a sample from Multinomial(N;K,weights[0],...,weights[K-1]) ?
 		It draws a K-dimensional vector (n[0],...,n[K-1]) such that n[0]+...+n[K-1] = N. It is like sampling N times K different colors. Each n[j] counts how may times color j has been selected.
 		At each draw, probabilities of the K colors are given by weights.

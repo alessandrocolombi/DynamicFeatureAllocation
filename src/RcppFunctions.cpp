@@ -146,6 +146,19 @@ double log_dmarg_img( const int& K, const MyTraits::VecCol& x, const MyTraits::V
 // Test functions
 // --------------------------------------------------------------------------------------------
 
+// [[Rcpp::export]]
+int Test_sample_Ditl(const std::vector<MatCol>& Lambda_itl, const MatIntCol& Xi, const MatIntCol& D, const int& seed)
+{
+	sample::GSL_RNG engine(seed);
+	return sample_Ditl(engine, Lambda_itl, Xi, D);
+}
+
+// [[Rcpp::export]]
+int Test_sample_Lambdaitl(const std::vector<MatCol>& D_itl, const MatIntCol& Xi, const double& delta, const int& seed)
+{
+	sample::GSL_RNG engine(seed);
+	return sample_Lambda_itl(engine, D_itl, Xi, delta);
+}
 
 Rcpp::NumericVector prova(Rcpp::NumericVector x)
 {

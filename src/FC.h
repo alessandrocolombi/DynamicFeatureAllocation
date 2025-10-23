@@ -24,8 +24,14 @@ using namespace Rcpp;
 
 int sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_itl, const MatIntCol& Xi, const MatIntCol& D);
 
-int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatCol>& D_itl, const MatIntCol& Xi);
+int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatCol>& D_itl, const MatIntCol& Xi, const double& delta);
 
+int sample_Stl(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol& U, const double& phi, const double& sigma, const double& b);
+
+int sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double& t_sigma_gamma);
+
+int sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const MatCol& S, const MatUnsCol& N_tl, 
+                 const double& phi, const double& sigma, const double& b, const double& t_sigma_gamma);
 //------------------------------------------------------------------------------------------------------------------------------------------------------
 //	Utilities
 //------------------------------------------------------------------------------------------------------------------------------------------------------
