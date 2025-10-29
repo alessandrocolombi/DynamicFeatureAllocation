@@ -4,6 +4,9 @@
 #include <Rcpp.h>
 #include <RcppEigen.h>
 #include <RcppGSL.h>
+#include <progress.hpp>
+#include <progress_bar.hpp>
+// [[Rcpp::depends(RcppProgress)]]
 
 // Include file with basic libraries to include
 #include "headers.h"
@@ -139,26 +142,189 @@ double log_dmarg_img( const int& K, const MyTraits::VecCol& x, const MyTraits::V
 // --------------------------------------------------------------------------------------------
 // Truncated Gibbs Sampling for Topic Modeling
 // --------------------------------------------------------------------------------------------
+// [[Rcpp::export]]
+Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, 
+															const MatIntCol& D, const int& H, const int& V, const int& Ttot,
+															const Rcpp::List& param_DTM, const Rcpp::List& init_DTM)
+{
+	const int niter_tot = niter + nburn;
+	//Read param_DTM
+	double delta     = as<double>(param_DTM["delta"]);
+	double a_phi     = as<double>(param_DTM["a_phi"]);
+	double b_phi     = as<double>(param_DTM["b_phi"]);
+	double a_gamma   = as<double>(param_DTM["a_gamma"]);
+	double b_gamma   = as<double>(param_DTM["b_gamma"]);
+	double a_sigma   = as<double>(param_DTM["a_sigma"]);
+	double b_sigma   = as<double>(param_DTM["b_sigma"]);
+	double a_beta    = as<double>(param_DTM["a_beta"]);
+	double b_beta    = as<double>(param_DTM["b_beta"]);
+	
+	double var_phi   = as<double>(param_DTM["var_phi"]);
+	double var_gamma = as<double>(param_DTM["var_gamma"]);
+	double var_sigma = as<double>(param_DTM["var_sigma"]);
+	double var_beta  = as<double>(param_DTM["var_beta"]);
+	
+	bool UpdateDitl   = as<bool>(param_DTM["UpdateDitl"]);
+	bool UpdateS      = as<bool>(param_DTM["UpdateS"]);
+	bool UpdateLambda = as<bool>(param_DTM["UpdateLambda"]);
+	bool UpdateXi     = as<bool>(param_DTM["UpdateXi"]);
+	bool UpdateU      = as<bool>(param_DTM["UpdateU"]);
+	bool UpdatePhi    = as<bool>(param_DTM["UpdatePhi"]);
+	bool UpdateGamma  = as<bool>(param_DTM["UpdateGamma"]);
+	bool UpdateSigma  = as<bool>(param_DTM["UpdateSigma"]);
+	bool UpdateBeta   = as<bool>(param_DTM["UpdateBeta"]);
+	bool print        = as<bool>(param_DTM["print"]);
+	
+	int seed   = as<int>(param_DTM["seed"]);
+	sample::GSL_RNG engine(seed);
 
+	// Read initial values
+  MatIntCol Xi0 = init_DTM["Xi0"];
+  MatCol S0     = init_DTM["S0"];
+  List Lambda0_list = init_DTM["Lambda0"];
+  std::vector<MatCol> Lambda0(H);
+  for (int l = 0; l < H; l++) {
+    Lambda0[l] = as<MatCol>(Lambda0_list[l]);
+  }
 
+  // Check Lambda0
+  for(int l=0; l < H; l++){
+  	VecCol aux = Lambda0[l].colwise().sum();
+  	if (!((aux.array() - 1.0).abs() <= 1e-10).all()) {
+  	    throw std::runtime_error("Error in Lambda0: column values must sum to 1");
+  	}
+  }
+
+  double phi0   = as<double>(init_DTM["phi0"]);
+  double gamma0 = as<double>(init_DTM["gamma0"]);
+  double sigma0 = as<double>(init_DTM["sigma0"]);
+  double beta0  = as<double>(init_DTM["beta0"]);
+  double t_sigma_gamma0 = std::exp( 1.0/sigma0 * ( std::log(sigma0*(double)H) - std::log(gamma0) )  );
+
+  // Initilize Dl and U
+  MatCol U0 = sample_Utl(engine, S0, t_sigma_gamma0);
+  auto temp = sample_Ditl(engine, Lambda0, Xi0, D);
+  std::vector<MatUnsCol> Dl0 = temp.first;
+  MatUnsCol N0 = temp.second;
+
+  // Main objects initialization
+  std::vector<MatIntCol> Xi_mcmc(niter_tot+1, MatIntCol::Zero(H,Ttot)); Xi_mcmc[0] = Xi0;
+  std::vector<MatCol> S_mcmc(niter_tot+1, MatCol::Zero(H,Ttot));        S_mcmc[0] = S0;
+  std::vector<MatCol> U_mcmc(niter_tot+1,  MatCol::Zero(H,Ttot));       U_mcmc[0] = U0;
+  std::vector<MatUnsCol> N_mcmc(niter_tot+1,  MatUnsCol::Zero(Ttot,H)); N_mcmc[0] = N0;
+  std::vector<std::vector<MatUnsCol>> Dl_mcmc(niter_tot+1, Dl0);
+  std::vector<std::vector<MatCol>> Lambda_mcmc(niter_tot+1, Lambda0);
+
+  std::vector<double> phi_mcmc(niter_tot+1,-1.0);   phi_mcmc[0]   = phi0;
+  std::vector<double> gamma_mcmc(niter_tot+1,-1.0); gamma_mcmc[0] = gamma0;
+  std::vector<double> sigma_mcmc(niter_tot+1,-1.0); sigma_mcmc[0] = sigma0;
+  std::vector<double> beta_mcmc(niter_tot+1,-1.0);  beta_mcmc[0] = beta0;
+  std::vector<double> t_sigma_gamma_mcmc(niter_tot+1,-1.0);  t_sigma_gamma_mcmc[0] = t_sigma_gamma0;
+
+  // Start MCMC loop
+  Rcpp::Rcout<<"Preprocessing finished. Start MCMC ... "<<std::endl;
+  Progress progress_bar(niter_tot, print); // Initialize progress bar
+  for(int it = 1; it <= niter_tot; it++){
+
+  	// ----------------------------------
+  	if(UpdateXi){
+  		Xi_mcmc[it] = sample_Xi_tl(engine, Xi_mcmc[it-1], S_mcmc[it-1], N_mcmc[it-1],
+  		                       			phi_mcmc[it-1], sigma_mcmc[it-1], beta_mcmc[it-1], 
+  		                       			t_sigma_gamma_mcmc[it-1]);
+  	}
+  	else{
+  		Xi_mcmc[it] = Xi_mcmc[it-1];
+  	}
+		// ----------------------------------
+  	if(UpdateS){
+			S_mcmc[it] = sample_Stl(engine, Xi_mcmc[it], U_mcmc[it-1], phi_mcmc[it-1], sigma_mcmc[it-1], beta_mcmc[it-1]);
+  	}
+  	else{
+  		S_mcmc[it] = S_mcmc[it-1];
+  	}
+  	// ----------------------------------
+  	if(UpdateU){
+			U_mcmc[it] = sample_Utl(engine, S_mcmc[it], t_sigma_gamma_mcmc[it-1]);
+  	}
+  	else{
+  		U_mcmc[it] = U_mcmc[it-1];
+  	}
+  	// ----------------------------------
+  	if(UpdateLambda){
+  		Lambda_mcmc[it-1] = sample_Lambda_itl(engine, Dl_mcmc[it-1], Xi_mcmc[it], delta);
+  	}
+  	else{
+  		Lambda_mcmc[it] = Lambda_mcmc[it-1];
+  	}
+  	// Check Lambda_mcmc[it]
+  	// Is this necessary??
+  	for(int l=0; l < H; l++){
+  		VecCol aux = Lambda_mcmc[it][l].colwise().sum();
+  		if (!((aux.array() - 1.0).abs() <= 1e-10).all()) {
+  		    throw std::runtime_error("Error in Lambda: column values must sum to 1");
+  		}
+  	}
+  	// ----------------------------------
+  	if(UpdateDitl){
+  		auto aux = sample_Ditl(engine, Lambda_mcmc[it], Xi_mcmc[it], D);
+			Dl_mcmc[it] = aux.first;
+			N_mcmc[it]  = aux.second;
+  	}
+  	else{
+  		Dl_mcmc[it] = Dl_mcmc[it-1];
+  		N_mcmc[it]  = N_mcmc[it-1];
+  	}
+  	// ----------------------------------
+  	if(UpdatePhi || UpdateBeta || UpdateGamma || UpdateSigma){
+  		VecCol aux = sample_hyparams( engine, Xi_mcmc[it], S_mcmc[it], 
+                         						phi_mcmc[it-1],  gamma_mcmc[it-1],  sigma_mcmc[it-1],  beta_mcmc[it-1], t_sigma_gamma_mcmc[it-1],
+                         						a_phi, b_phi, a_gamma, b_gamma, a_sigma, b_sigma, a_beta, b_beta,  
+                         						var_phi,  var_gamma,  var_sigma,  var_beta,
+			                        			UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta);
+	  	phi_mcmc[it]   = aux[0];
+	  	gamma_mcmc[it] = aux[1];
+	  	sigma_mcmc[it] = aux[2];
+	  	beta_mcmc[it]  = aux[3]; 
+	  	t_sigma_gamma_mcmc[it] = aux[4];
+  	}
+  	else{
+  		phi_mcmc[it]   = phi_mcmc[it-1];
+  		gamma_mcmc[it] = gamma_mcmc[it-1];
+  		sigma_mcmc[it] = sigma_mcmc[it-1];
+  		beta_mcmc[it]  = beta_mcmc[it-1]; 
+  		t_sigma_gamma_mcmc[it] = t_sigma_gamma_mcmc[it-1];
+  	}
+
+  	//Check for User Interruption
+    try{
+    	Rcpp::checkUserInterrupt();
+    }
+    catch(Rcpp::internal::InterruptedException e){ 
+    	//Print error and return
+      throw std::runtime_error("Execution stopped by the user");
+    }
+  	progress_bar.increment(); //update progress bar
+  }
+
+  return Rcpp::List::create(  
+  	Rcpp::Named("Xi") = Xi_mcmc,
+  	Rcpp::Named("S") = S_mcmc,
+  	Rcpp::Named("U") = U_mcmc,
+  	Rcpp::Named("N") = N_mcmc,
+  	Rcpp::Named("Dl") = Dl_mcmc,
+  	Rcpp::Named("Lambda") = Lambda_mcmc,
+  	Rcpp::Named("phi") = phi_mcmc,
+  	Rcpp::Named("gamma") = gamma_mcmc,
+  	Rcpp::Named("sigma") = sigma_mcmc,
+  	Rcpp::Named("beta") = beta_mcmc,
+  	Rcpp::Named("t_sigma_gamma") = t_sigma_gamma_mcmc
+  );
+}
 
 // --------------------------------------------------------------------------------------------
 // Test functions
 // --------------------------------------------------------------------------------------------
 
-// [[Rcpp::export]]
-int Test_sample_Ditl(const std::vector<MatCol>& Lambda_itl, const MatIntCol& Xi, const MatIntCol& D, const int& seed)
-{
-	sample::GSL_RNG engine(seed);
-	return sample_Ditl(engine, Lambda_itl, Xi, D);
-}
-
-// [[Rcpp::export]]
-int Test_sample_Lambdaitl(const std::vector<MatCol>& D_itl, const MatIntCol& Xi, const double& delta, const int& seed)
-{
-	sample::GSL_RNG engine(seed);
-	return sample_Lambda_itl(engine, D_itl, Xi, delta);
-}
 
 Rcpp::NumericVector prova(Rcpp::NumericVector x)
 {

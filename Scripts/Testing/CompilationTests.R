@@ -133,5 +133,37 @@ D_itl[[1]]
 
 
 
+# Prova GS ----------------------------------------------------------------
 
+source("../../R/Rfunctions.R")
+Rcpp::sourceCpp("../../src/RcppFunctions.cpp")
 
+H = 4
+Ttot = 6
+V = 10
+
+seed = 1234
+delta = 0.5
+a_phi=1;b_phi=1;a_gamma=1;b_gamma=1;a_sigma=1;b_sigma=1;a_beta=1;b_beta=1; 
+var_phi=1;var_gamma=1;var_sigma=1;var_beta=1;
+UpdateDitl=TRUE;UpdateS=TRUE;UpdateLambda=TRUE;UpdateXi=TRUE; UpdateU=TRUE;
+UpdatePhi=TRUE;UpdateGamma=TRUE;UpdateSigma=TRUE;UpdateBeta = TRUE; print = TRUE
+param_DTM = set_param_DTM(H,delta, 
+                          a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
+                         var_phi,var_gamma,var_sigma,var_beta,
+                         UpdateDitl,UpdateS,UpdateLambda,UpdateXi, UpdateU,
+                         UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,print)
+Xi0 = matrix(1:(H*Ttot), nrow = H, ncol = Ttot)
+S0 = matrix(runif(n=H*Ttot), nrow = H, ncol = Ttot)
+Lambda0 = vector("list",H)
+Lambda0 = lapply(Lambda0, function(x){matrix(runif(n=V*Ttot), nrow = V, ncol = Ttot)})
+phi0=1;gamma0=1;sigma0=0.5;beta0=1;
+init_DTM = set_init_DTM(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0)
+
+niter = 10;nburn = 5
+data = matrix(1:(V*Ttot), nrow = V, ncol = Ttot)
+fit = GibbsSampler_DTM(niter,nburn,data,param_DTM,init_DTM)
+fit$phi
+fit$U[[2]]
+length(fit$Lambda)
+fit$Lambda[[1]][[2]]

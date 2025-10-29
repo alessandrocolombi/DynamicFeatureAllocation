@@ -25,7 +25,8 @@ void find_indices(const VecIntCol& Z, std::vector<int>& idx_born, std::vector<in
 }
 
 
-int sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_itl, const MatIntCol& Xi, const MatIntCol& D) 
+std::pair<std::vector<MatUnsCol>, MatUnsCol> 
+sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_itl, const MatIntCol& Xi, const MatIntCol& D) 
 {
   sample::rmultinomial<VecUnsCol> rmultinomial; // define callable object to generate random samples from a Multivariate distribution
 
@@ -76,13 +77,10 @@ int sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambd
   }
   //Rcpp::Rcout<<"N_tl:"<<std::endl<<N_tl<<std::endl;
 
-  return 1;
+  return std::make_pair(D_itl, N_tl);
 }
 
-
-// It should be std::vector<MatUnsCol>& D_itl
-// but for testing purposes I am using std::vector<MatCol>& D_itl
-int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatCol>& D_itl, const MatIntCol& Xi, const double& delta)
+std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatUnsCol>& D_itl, const MatIntCol& Xi, const double& delta)
 {
   sample::rgamma rgamma; // define callable object to generate random samples from a gamma distribution
 
@@ -94,6 +92,8 @@ int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatCol>&
     throw std::runtime_error("Error in sample_Ditl: H must be >= 1 ");
   if(D_itl[0].cols() != Ttot)
     throw std::runtime_error("Error in sample_Ditl: Xi.cols() != D_itl[0].cols()");
+  if(delta <= 0)
+    throw std::runtime_error("Error in sample_Ditl: delts must be positive ");
 
   const int V = D_itl[0].rows(); // Vocabulary size
 
@@ -141,10 +141,10 @@ int sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatCol>&
       }
   }
 
-  return 1;
+  return Lambda_itl;
 }
 
-int sample_Stl(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol& U, const double& phi, const double& sigma, const double& b)
+MatCol sample_Stl(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol& U, const double& phi, const double& sigma, const double& b)
 {
   sample::rgamma rgamma; // define callable object to generate random samples from a gamma distribution
 
@@ -164,7 +164,7 @@ int sample_Stl(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol
   MatCol S{ MatCol::Zero(H,Ttot) }; // inizialize main object
   for(int l=0; l < H; l++){
     for(int t=0; t < Ttot; t++){
-      double shape = Xi(l,t) - sigma;
+      double shape = 1.0 + Xi(l,t) - sigma;
       double rate = U(l,t) + b + phi;
       if(t > 0){
         shape += Xi(l,t-1);
@@ -173,13 +173,12 @@ int sample_Stl(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol
       if( shape <= 0 || rate <= 0 || std::isnan(shape) || std::isnan(rate) )
           throw std::runtime_error("Error in sample_Stl, invalid shape or rate");
       S(l,t) = rgamma(engine, shape, 1.0/rate);
-
     }
   }
-  return 1;
+  return S;
 }
 
-int sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double& t_sigma_gamma)
+MatCol sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double& t_sigma_gamma)
 {
   sample::runif runif; // define callable object to generate random samples from a Uniform distribution
 
@@ -201,20 +200,24 @@ int sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double& t_
 
   for(int l=0; l < H; l++){
     for(int t=0; t < Ttot; t++){
+      if(S(l,t) <= 0)
+        throw std::runtime_error("Error in sample_Utl: S_tl can not be negative or zero ");
+      
       double Y = runif(engine);
       double temp = invCDF(S(l,t), Y);
       if( temp <= 0 || std::isnan(temp) ){
         Rcpp::Rcout<<"t = "<<t<<"; l = "<<l<<"temp = "<<temp<<std::endl;
         throw std::runtime_error("Error in sample_Utl: U is out of range ");
       }
+      U(l,t) = temp;
     }
   }
 
-  return 1;
+  return U;
 }
 
-int sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const MatCol& S, const MatUnsCol& N_tl, 
-                 const double& phi, const double& sigma, const double& b, const double& t_sigma_gamma)
+MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const MatCol& S, const MatUnsCol& N_tl, 
+                       const double& phi, const double& sigma, const double& b, const double& t_sigma_gamma)
 {
   sample::rpoisson rpoisson; // define callable object to generate random samples from a gamma distribution
   sample::runif runif; // define callable object to generate random samples from a Uniform distribution
@@ -242,6 +245,9 @@ int sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const 
 
   for(int l=0; l < H; l++){
     for(int t=0; t < Ttot; t++){
+      if(S(l,t) <= 0)
+        throw std::runtime_error("Error in sample_Xi_tl: S_tl can not be negative or zero ");
+
       int xi_prime = rpoisson(phi * S(l,t));
       int xi_tl = Xi_old(l,t);
       double log_R_tl = (double)xi_tl - (double)xi_prime + N_tl(t,l) * ( std::log((double)xi_prime) - std::log((double)xi_tl) );
@@ -262,20 +268,20 @@ int sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const 
 
     }
   }
-  return 1;
+  return Xi;
 }
 
 
 // This function implements the proposed update in Section B.4 of [C.Naik, F.Caron, J.Rousseau, Y.Teh, K.Palla] Bayesian Nonparametrics for Sparse Dynamic Networks (2023)
-int sample_hyparams(sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol& S, 
-                    const double& phi_old, const double& gamma_old, const double& sigma_old, const double& b_old, 
-                    const double& t_sigma_gamma_old,
-                    const double& a_phi, const double& b_phi, 
-                    const double& a_gamma, const double& b_gamma, 
-                    const double& a_sigma, const double& b_sigma, 
-                    const double& a_beta, const double& b_beta, 
-                    const double& var_phi, const double& var_gamma, const double& var_sigma, const double& var_beta,
-                    bool UpdatePhi, bool UpdateGamma, bool UpdateSigma, bool UpdateBeta)
+VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, const MatCol& S, 
+                        const double& phi_old, const double& gamma_old, const double& sigma_old, const double& b_old, 
+                        const double& t_sigma_gamma_old,
+                        const double& a_phi, const double& b_phi, 
+                        const double& a_gamma, const double& b_gamma, 
+                        const double& a_sigma, const double& b_sigma, 
+                        const double& a_beta, const double& b_beta, 
+                        const double& var_phi, const double& var_gamma, const double& var_sigma, const double& var_beta,
+                        bool UpdatePhi, bool UpdateGamma, bool UpdateSigma, bool UpdateBeta)
 {
   sample::rnorm rnorm; // define callable object to generate random samples from a normal distribution
   sample::runif runif; // define callable object to generate random samples from a uniform distribution
@@ -398,8 +404,20 @@ int sample_hyparams(sample::GSL_RNG const & engine, const MatIntCol& Xi, const M
     b_res = b_prime;
     t_sigma_gamma_res = t_sigma_gamma_prime;
   }
-
-  // return
-  return 1;
-
+  // Checks:
+  if( phi_res <= 0 )
+    throw std::runtime_error("Error in sample_hyparams: phi can not be negative or zero ");
+  if( gamma_res <= 0 )
+    throw std::runtime_error("Error in sample_hyparams: gamma can not be negative or zero ");
+  if( b_res <= 0 )
+    throw std::runtime_error("Error in sample_hyparams: b can not be negative or zero ");
+  if( sigma_res <= 0.0 || sigma_res >= 1.0 )
+    throw std::runtime_error("Error in sample_hyparams: sigma must be in (0,1) ");
+  if( t_sigma_gamma_res <= 0.0 )
+    throw std::runtime_error("Error in sample_hyparams: t_sigma_gamma_res can not be negative or zero ");
+  
+  // Return
+  VecCol res_vec(5);
+  res_vec << phi_res, gamma_res, sigma_res, b_res, t_sigma_gamma_res;
+  return res_vec;
 }
