@@ -219,6 +219,8 @@ MatCol sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double&
 MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, const MatCol& S, const MatUnsCol& N_tl, 
                        const double& phi, const double& sigma, const double& b, const double& t_sigma_gamma)
 {
+  //Rcpp::Rcout<<"Dentro!"<<std::endl;
+
   sample::rpoisson rpoisson; // define callable object to generate random samples from a gamma distribution
   sample::runif runif; // define callable object to generate random samples from a Uniform distribution
 
@@ -242,6 +244,9 @@ MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, 
     throw std::runtime_error("Error in sample_Xi_tl: t_sigma_gamma is out of range ");
 
   MatIntCol Xi{MatIntCol::Zero(H,Ttot)}; // initialize main object
+  double b_phi   = b+phi;
+  double b_phi_t = b+phi+t_sigma_gamma;
+  double temp    = std::log(b_phi) - std::log(b_phi_t);
 
   for(int l=0; l < H; l++){
     for(int t=0; t < Ttot; t++){
@@ -250,12 +255,31 @@ MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, 
 
       int xi_prime = rpoisson(phi * S(l,t));
       int xi_tl = Xi_old(l,t);
-      double log_R_tl = (double)xi_tl - (double)xi_prime + N_tl(t,l) * ( std::log((double)xi_prime) - std::log((double)xi_tl) );
+      double log_R_tl =  + N_tl(t,l) * ( std::log((double)xi_prime) - std::log((double)xi_tl) );
+      Rcpp::Rcout<<"log_R_tl 1 = "<<log_R_tl<<std::endl;
       if(t < Ttot - 1){
         log_R_tl += std::log((double)xi_prime - sigma) - std::log((double)xi_tl - sigma) + std::lgamma(1.0 + (double)xi_tl - sigma) - std::lgamma(1.0 + (double)xi_prime - sigma);
+        Rcpp::Rcout<<"log_R_tl 2 = "<<log_R_tl<<std::endl;
         log_R_tl += ((double)xi_prime - (double)xi_tl)*std::log( S(l,t+1) );
-        log_R_tl += std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_tl) - std::pow(b+phi,sigma-(double)xi_tl) ) - std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_prime) - std::pow(b+phi,sigma-(double)xi_prime) );
+        Rcpp::Rcout<<"log_R_tl 3 = "<<log_R_tl<<std::endl;
+        log_R_tl += ( (double)xi_prime - (double)xi_tl ) * std::log(b_phi_t);
+        Rcpp::Rcout<<"log_R_tl 4 = "<<log_R_tl<<std::endl;
+        double x_old   = sigma - (double)xi_tl;
+        double x_prime = sigma - (double)xi_prime;
+
+        log_R_tl += std::log( -gsl_expm1( x_old  *temp ) );
+        Rcpp::Rcout<<"log_R_tl 5 = "<<log_R_tl<<std::endl;
+        log_R_tl -= std::log( -gsl_expm1( x_prime*temp ) );
+        Rcpp::Rcout<<"log_R_tl 6 = "<<log_R_tl<<std::endl;
+
+        //log_R_tl += std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_tl) - std::pow(b+phi,sigma-(double)xi_tl) ) - std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_prime) - std::pow(b+phi,sigma-(double)xi_prime) );
+        
       }
+      if( std::isnan(log_R_tl) ){
+        Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<", S(l,t) = "<<S(l,t)<<std::endl;
+        throw std::runtime_error("Error in sample_Xi_tl: get nan in acceptance probability");
+      }
+
       double u = runif(engine);
       if(std::log(u) < log_R_tl ){
         // accepted
@@ -266,7 +290,10 @@ MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, 
         Xi(l,t) = xi_tl;
       }
 
+      Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<", prob "<<std::exp(log_R_tl)<<std::endl;
     }
+    if(l == 4)
+      throw std::runtime_error("FERMO IO ");
   }
   return Xi;
 }

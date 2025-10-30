@@ -326,6 +326,14 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
 // --------------------------------------------------------------------------------------------
 
 
+// [[Rcpp::export]]
+MatIntCol sample_Xi_tl(const int& seed, const MatIntCol& Xi_old, const MatCol& S, const MatUnsCol& N_tl, 
+                       const double& phi, const double& sigma, const double& b, const double& t_sigma_gamma)
+{
+	sample::GSL_RNG engine(seed);
+	return sample_Xi_tl(engine, Xi_old, S, N_tl, phi, sigma, b, t_sigma_gamma);
+}
+
 Rcpp::NumericVector prova(Rcpp::NumericVector x)
 {
   return x+x;

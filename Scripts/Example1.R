@@ -154,17 +154,7 @@ a_sigma=1;b_sigma=1;
 a_beta=1;b_beta=1; 
 var_phi<-var_gamma<-var_sigma<-var_beta<-0.01
 
-UpdateDitl=TRUE; UpdateS=TRUE; 
-UpdateLambda=TRUE;UpdateXi=TRUE; 
-UpdateU=TRUE;
-UpdatePhi=TRUE; UpdateGamma=TRUE;
-UpdateSigma=TRUE; UpdateBeta = TRUE; 
-print = TRUE
-param_DTM = set_param_DTM(H,delta, 
-                          a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
-                          var_phi,var_gamma,var_sigma,var_beta,
-                          UpdateDitl,UpdateS,UpdateLambda,UpdateXi, UpdateU,
-                          UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,print)
+
 
 # Initial values
 Xi0 = matrix(sample(0:100,H*Ttot,TRUE), nrow = H, ncol = Ttot)
@@ -174,14 +164,47 @@ Lambda0 = lapply(Lambda0, function(x){
   A = matrix(0, nrow = V, ncol = Ttot)
   A = apply(A,2,function(y){ a = rgamma(n=V, shape = delta, rate = 1); a/sum(a) })
 })
+# ---
+# Set Lambda0 to the true one
+for(t in 1:6){
+  Lambda0[[1]][,t] = Lambda[,1]
+}
+for(t in 7:14){
+  Lambda0[[2]][,t] = Lambda[,2]
+}
+for(t in 15:23){
+  Lambda0[[3]][,t] = Lambda[,3]
+}
+# ---
+# Set Xi0 to the true one
+# Xi0 = matrix(0, nrow = H, ncol = Ttot)
+# Xi0[1:3,] = Xi
+# ---
+# Set S0 to the true one
+load("Brutta_Strue.Rdat")
+S0 = S_mean
+# ---
+
+
 phi0=1;gamma0=1;sigma0=0.5;beta0=1;
 
 
 init_DTM = set_init_DTM(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0)
 
+UpdateDitl=TRUE; UpdateS=FALSE; 
+UpdateLambda=FALSE;UpdateXi=TRUE; 
+UpdateU=TRUE;
+UpdatePhi=FALSE; UpdateGamma=TRUE;
+UpdateSigma=FALSE; UpdateBeta = TRUE; 
+print = TRUE
+param_DTM = set_param_DTM(H,delta, 
+                          a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
+                          var_phi,var_gamma,var_sigma,var_beta,
+                          UpdateDitl,UpdateS,UpdateLambda,UpdateXi, UpdateU,
+                          UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,print)
 
 # Run ---------------------------------------------------------------------
-niter = 10000
+niter = 1000
 nburn = 1
 fit = GibbsSampler_DTM(niter,nburn,D,param_DTM,init_DTM)
 
@@ -192,8 +215,67 @@ phi_mcmc = fit$phi
 plot(phi_mcmc, type = "l")
 plot(fit$gamma, type = "l")
 
+## Xi and S ------------------------------------------------------------------
+
+Xi_mean <- Reduce("+", fit$Xi)/length(fit$Xi)
+par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+image( 1:Ttot, 1:H, 
+       t(Xi_mean),   
+       col = mycol,    
+       xlab = "Time", 
+       ylab = "Atoms",
+       main = "<Xi>",
+       axes = FALSE )
+axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+     cex.axis = 0.7 )
+axis(2, at = seq(1, H, length.out = min(H, 10)), 
+     labels = round(seq(1, H, length.out = min(H, 10))),
+     cex.axis = 0.7)
+box()
+fields::image.plot(
+  1:Ttot, 1:H, Xi_mean,
+  col = mycol,
+  legend.only = TRUE,
+  horizontal = FALSE,
+  legend.width = 1.2,            # controls legend thickness
+  legend.shrink = 0.8,           # smaller legend
+  legend.mar = 8.5,              # margin from image
+  legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+)
+
+
+S_mean <- Reduce("+", fit$S)/length(fit$S)
+par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+image( 1:Ttot, 1:H, 
+       t(S_mean),   
+       col = mycol,    
+       xlab = "Time", 
+       ylab = "Atoms",
+       main = "<S>",
+       axes = FALSE )
+axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+     cex.axis = 0.7 )
+axis(2, at = seq(1, H, length.out = min(H, 10)), 
+     labels = round(seq(1, H, length.out = min(H, 10))),
+     cex.axis = 0.7)
+box()
+fields::image.plot(
+  1:Ttot, 1:H, S_mean,
+  col = mycol,
+  legend.only = TRUE,
+  horizontal = FALSE,
+  legend.width = 1.2,            # controls legend thickness
+  legend.shrink = 0.8,           # smaller legend
+  legend.mar = 8.5,                # margin from image
+  legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+)
+
+
+## N_tl ------------------------------------------------------------------
+
 N_mean <- Reduce("+", fit$N)/length(fit$N)
-dim(N_mean)
 par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
 image( 1:Ttot, 1:H, 
        N_mean,   
@@ -221,41 +303,46 @@ fields::image.plot(
 )
 
 
-length(fit$Lambda)
-length(fit$Lambda[[1]])
+
+## D_l --------------------------------------------------------------------
+
+Dl_means = lapply(1:H, function(l){
+  temp = lapply(fit$Dl, function(x){x[[l]]})
+  Reduce("+", temp)/length(temp)
+})
+
+for(l in 1:H){
+  Dl_mean_l = Dl_means[[l]]
+  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+  image( 1:Ttot, 1:V, 
+         t(Dl_mean_l),   
+         col = mycol,    
+         xlab = "Time", 
+         ylab = "Words",
+         main = paste0("<D_",l,">"),
+         axes = FALSE )
+  axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7 )
+  axis(2, at = seq(1, V, length.out = min(H, 10)), 
+       labels = round(seq(1, V, length.out = min(H, 10))),
+       cex.axis = 0.7)
+  box()
+  fields::image.plot(
+    1:Ttot, 1:V, t(Dl_mean_l),
+    col = mycol,
+    legend.only = TRUE,
+    horizontal = FALSE,
+    legend.width = 1.2,            # controls legend thickness
+    legend.shrink = 0.8,           # smaller legend
+    legend.mar = 8.5,                # margin from image
+    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+  )
+}
 
 
-it = 10000
-# Dl_final = Reduce("+",fit$Dl[[it]])
-Dl_final_1 = fit$Dl[[it]][[1]]
-par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
-image( 1:Ttot, 1:V, 
-       t(Dl_final_1),   
-       col = mycol,    
-       xlab = "Time", 
-       ylab = "Words",
-       main = "Dl_final",
-       axes = FALSE )
-axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
-     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
-     cex.axis = 0.7 )
-axis(2, at = seq(1, V, length.out = min(H, 10)), 
-     labels = round(seq(1, V, length.out = min(H, 10))),
-     cex.axis = 0.7)
-box()
-fields::image.plot(
-  1:Ttot, 1:V, t(Dl_final),
-  col = mycol,
-  legend.only = TRUE,
-  horizontal = FALSE,
-  legend.width = 1.2,            # controls legend thickness
-  legend.shrink = 0.8,           # smaller legend
-  legend.mar = 8.5,                # margin from image
-  legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
-)
 
 
-fit$Lambda[[it]][[1]]
 
 
 
