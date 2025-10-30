@@ -46,6 +46,9 @@ sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_it
     
   for(int i = 0; i < V; i++) {
     for(int t = 0; t < Ttot; t++) {
+
+      //Rcpp::Rcout<<" -------------- "<<std::endl;
+      //Rcpp::Rcout<<"("<<i<<", "<<t<<") : D_it = "<<D(i,t)<<std::endl;
       VecCol zeta_it{VecCol::Zero(H)}; // inizialize weights to 0
       // Build zeta_it = Lambda[l](i,t) * Xi(l,t)
       for(int l = 0; l < H; l++) {
@@ -56,8 +59,8 @@ sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_it
       double sum_w = zeta_it.sum(); // compute the sum
       if(sum_w > 0) { // if 0, do nothing. otherwise ..
         zeta_it /= sum_w;  // normalize
-        //Rcpp::Rcout<<"zeta_it:"<<std::endl<<zeta_it<<std::endl;
         int n = D(i,t); // number of trials
+        //Rcpp::Rcout<<"zeta_it:"<<std::endl<<zeta_it.transpose()<<std::endl;
         VecUnsCol temp = rmultinomial(engine, n, zeta_it); // sample from multinomial distribution
         for(int l = 0; l < H; l++) { 
           D_itl[l](i,t) = temp(l); // Save values in D_itl
@@ -65,6 +68,26 @@ sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_it
       
         //Rcpp::Rcout<<"temp: "<<temp<<std::endl;
       }
+
+      /*
+      // This is just a print
+      int somma{0};
+      for(int l = 0; l < H; l++){
+        somma += D_itl[l](i,t);
+        Rcpp::Rcout<<D_itl[l](i,t)<<", ";
+      }
+      Rcpp::Rcout<<std::endl;    
+      if(somma != D(i,t)){
+        Rcpp::Rcout<<"Xi(,t) = "<<std::endl<<Xi.col(t)<<std::endl;
+        Rcpp::Rcout<<"Lambda: "<<std::endl;
+        for(int l = 0; l < H; l++){
+          Rcpp::Rcout<<Lambda_itl[l](i,t)<<", ";
+      }
+        throw std::runtime_error("Error, la somma non torna ");
+      }
+      // End print
+      */
+
       // End of time t for word i
     }
     // End of word i for all t
@@ -246,42 +269,64 @@ MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, 
   MatIntCol Xi{MatIntCol::Zero(H,Ttot)}; // initialize main object
   double b_phi   = b+phi;
   double b_phi_t = b+phi+t_sigma_gamma;
-  double temp    = std::log(b_phi) - std::log(b_phi_t);
-
+  double diff_log    = std::log(b_phi) - std::log(b_phi_t);
+  auto logNormConst = [b_phi,b_phi_t,sigma,diff_log](int c){
+    double res{0.0};
+    if(c == 0){
+      res += std::lgamma(1.0 - sigma) - std::log(sigma) + std::log( gsl_expm1( -sigma*diff_log ) );
+    }
+    else if(c >= 1){
+      res += std::lgamma((double)c - sigma) + std::log( -gsl_expm1( ((double)c - sigma)*diff_log ) );
+    }
+    else{
+      throw std::runtime_error("Error in sample_Xi_tl: c must be strictly positive ");
+    }
+    return res;
+  };
   for(int l=0; l < H; l++){
+    //Rcpp::Rcout<<" -------------- Start l = "<<l<<" -------------- "<<std::endl;
     for(int t=0; t < Ttot; t++){
+
       if(S(l,t) <= 0)
         throw std::runtime_error("Error in sample_Xi_tl: S_tl can not be negative or zero ");
 
-      int xi_prime = rpoisson(phi * S(l,t));
-      int xi_tl = Xi_old(l,t);
-      double log_R_tl =  + N_tl(t,l) * ( std::log((double)xi_prime) - std::log((double)xi_tl) );
-      Rcpp::Rcout<<"log_R_tl 1 = "<<log_R_tl<<std::endl;
-      if(t < Ttot - 1){
-        log_R_tl += std::log((double)xi_prime - sigma) - std::log((double)xi_tl - sigma) + std::lgamma(1.0 + (double)xi_tl - sigma) - std::lgamma(1.0 + (double)xi_prime - sigma);
-        Rcpp::Rcout<<"log_R_tl 2 = "<<log_R_tl<<std::endl;
-        log_R_tl += ((double)xi_prime - (double)xi_tl)*std::log( S(l,t+1) );
-        Rcpp::Rcout<<"log_R_tl 3 = "<<log_R_tl<<std::endl;
-        log_R_tl += ( (double)xi_prime - (double)xi_tl ) * std::log(b_phi_t);
-        Rcpp::Rcout<<"log_R_tl 4 = "<<log_R_tl<<std::endl;
-        double x_old   = sigma - (double)xi_tl;
-        double x_prime = sigma - (double)xi_prime;
+      //Rcpp::Rcout<<" -------------- "<<std::endl;
 
-        log_R_tl += std::log( -gsl_expm1( x_old  *temp ) );
-        Rcpp::Rcout<<"log_R_tl 5 = "<<log_R_tl<<std::endl;
-        log_R_tl -= std::log( -gsl_expm1( x_prime*temp ) );
-        Rcpp::Rcout<<"log_R_tl 6 = "<<log_R_tl<<std::endl;
+      int xi_prime = rpoisson(phi * S(l,t)); // proposed value
+      int xi_tl    = Xi_old(l,t);  // old value
+      double pacc{0.0}; // initialize prob. of accepting the move
 
-        //log_R_tl += std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_tl) - std::pow(b+phi,sigma-(double)xi_tl) ) - std::log( std::pow(b+phi+t_sigma_gamma,sigma-(double)xi_prime) - std::pow(b+phi,sigma-(double)xi_prime) );
-        
+      if( N_tl(t,l) > 0 && xi_prime == 0 ){
+        // do nothing, the proposed value of xi_prime is not accetable
       }
-      if( std::isnan(log_R_tl) ){
-        Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<", S(l,t) = "<<S(l,t)<<std::endl;
-        throw std::runtime_error("Error in sample_Xi_tl: get nan in acceptance probability");
+      else{
+        int diff_xi  = xi_prime - xi_tl; // difference new - old
+        // Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<" with N_tl = "<<N_tl(t,l)<<std::endl;
+
+        double log_R_tl = -(double)diff_xi; 
+        //Rcpp::Rcout<<"log_R_tl 0 = "<<log_R_tl<<std::endl;
+        if(xi_tl > 0 && xi_prime > 0){
+         //Rcpp::Rcout<<"N_tl(t,l) = "<<N_tl(t,l)<<std::endl; 
+         log_R_tl += N_tl(t,l) * ( std::log((double)xi_prime) - std::log((double)xi_tl) );
+        }
+        //Rcpp::Rcout<<"log_R_tl 1 = "<<log_R_tl<<std::endl;
+        
+        if(t < Ttot - 1){
+          log_R_tl += (double)diff_xi * ( std::log( S(l,t+1) ) + std::log(b_phi) - b_phi ) ;
+          //Rcpp::Rcout<<"log_R_tl 2 = "<<log_R_tl<<std::endl;
+          log_R_tl += logNormConst(xi_tl) - logNormConst(xi_prime);
+          //Rcpp::Rcout<<"log_R_tl 3 = "<<log_R_tl<<std::endl;
+        }
+        if( std::isnan(log_R_tl) ){
+          Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<", S(l,t) = "<<S(l,t)<<std::endl;
+          throw std::runtime_error("Error in sample_Xi_tl: get nan in acceptance probability");
+        }
+        pacc = std::exp( std::min(0.0,log_R_tl) ); // MH acc. prob
       }
 
       double u = runif(engine);
-      if(std::log(u) < log_R_tl ){
+      
+      if(u < pacc ){
         // accepted
         Xi(l,t) = xi_prime;
       }
@@ -289,12 +334,16 @@ MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, 
         // rejected
         Xi(l,t) = xi_tl;
       }
-
-      Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<", prob "<<std::exp(log_R_tl)<<std::endl;
+      //Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<" with N_tl = "<<N_tl(t,l)<<", prob "<<pacc<<", final value = "<<Xi(l,t)<<std::endl;
     }
-    if(l == 4)
-      throw std::runtime_error("FERMO IO ");
   }
+
+  // Final check
+  if( (Xi.colwise().sum().array() <= 0).any() ) {
+      throw std::runtime_error("Error in sample_Xi_tl: some columns of Xi have non-positive sum");
+  }
+
+  //Rcpp::Rcout<<"Xi:"<<std::endl<<Xi<<std::endl;
   return Xi;
 }
 
@@ -310,6 +359,7 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
                         const double& var_phi, const double& var_gamma, const double& var_sigma, const double& var_beta,
                         bool UpdatePhi, bool UpdateGamma, bool UpdateSigma, bool UpdateBeta)
 {
+  throw std::runtime_error("FERMO IO: FUNZIONE DA RIVEDERE, LE CONSTANTI DI NORMALIZZAZIONE SONO LOSCHE ");
   sample::rnorm rnorm; // define callable object to generate random samples from a normal distribution
   sample::runif runif; // define callable object to generate random samples from a uniform distribution
 

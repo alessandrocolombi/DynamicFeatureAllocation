@@ -163,6 +163,7 @@ Lambda0 = vector("list",H)
 Lambda0 = lapply(Lambda0, function(x){
   A = matrix(0, nrow = V, ncol = Ttot)
   A = apply(A,2,function(y){ a = rgamma(n=V, shape = delta, rate = 1); a/sum(a) })
+  A
 })
 # ---
 # Set Lambda0 to the true one
@@ -181,8 +182,8 @@ for(t in 15:23){
 # Xi0[1:3,] = Xi
 # ---
 # Set S0 to the true one
-load("Brutta_Strue.Rdat")
-S0 = S_mean
+# load("Brutta_Strue.Rdat")
+# S0 = S_mean
 # ---
 
 
@@ -191,11 +192,11 @@ phi0=1;gamma0=1;sigma0=0.5;beta0=1;
 
 init_DTM = set_init_DTM(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0)
 
-UpdateDitl=TRUE; UpdateS=FALSE; 
+UpdateDitl=TRUE; UpdateS=TRUE; 
 UpdateLambda=FALSE;UpdateXi=TRUE; 
 UpdateU=TRUE;
-UpdatePhi=FALSE; UpdateGamma=TRUE;
-UpdateSigma=FALSE; UpdateBeta = TRUE; 
+UpdatePhi=FALSE; UpdateGamma=FALSE;
+UpdateSigma=FALSE; UpdateBeta = FALSE; 
 print = TRUE
 param_DTM = set_param_DTM(H,delta, 
                           a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
@@ -204,7 +205,7 @@ param_DTM = set_param_DTM(H,delta,
                           UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,print)
 
 # Run ---------------------------------------------------------------------
-niter = 1000
+niter = 10000
 nburn = 1
 fit = GibbsSampler_DTM(niter,nburn,D,param_DTM,init_DTM)
 
@@ -343,14 +344,47 @@ for(l in 1:H){
 
 
 
+## Lambda --------------------------------------------------------------------
+
+prova = Lambda0[[1]]
+prova = fit$Lambda[[50]][[1]]
+
+par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+image( 1:Ttot, 1:V, 
+       t(prova),   
+       col = mycol,    
+       xlab = "Time", 
+       ylab = "Words",
+       main = "prova",
+       axes = FALSE )
+axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+     cex.axis = 0.7 )
+axis(2, at = seq(1, V, length.out = min(V, 10)), 
+     labels = round(seq(1, H, length.out = min(V, 10))),
+     cex.axis = 0.7)
+box()
+fields::image.plot(
+  1:Ttot, 1:V, prova,
+  col = mycol,
+  legend.only = TRUE,
+  horizontal = FALSE,
+  legend.width = 1.2,            # controls legend thickness
+  legend.shrink = 0.8,           # smaller legend
+  legend.mar = 8.5,                # margin from image
+  legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+)
 
 
 
 
 
+# Brutta ------------------------------------------------------------------
 
-
-
-
+fit$Dl[[50]][[1]][,1] + 
+fit$Dl[[50]][[2]][,1] + 
+fit$Dl[[50]][[3]][,1] + 
+fit$Dl[[50]][[4]][,1] +
+fit$Dl[[50]][[5]][,1] 
 
 
