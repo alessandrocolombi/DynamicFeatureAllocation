@@ -142,7 +142,7 @@ fields::image.plot(
 
 
 # Set options -------------------------------------------------------------
-seed = 1234
+seed = 22123
 
 H = 10 # number of atoms
 delta = 0.01 # Dirichlet parameter
@@ -178,12 +178,12 @@ for(t in 15:23){
 }
 # ---
 # Set Xi0 to the true one
-# Xi0 = matrix(0, nrow = H, ncol = Ttot)
-# Xi0[1:3,] = Xi
+Xi0 = matrix(0, nrow = H, ncol = Ttot)
+Xi0[1:3,] = Xi
 # ---
 # Set S0 to the true one
-# load("Brutta_Strue.Rdat")
-# S0 = S_mean
+load("Brutta_Strue.Rdat")
+S0 = S_mean
 # ---
 
 
@@ -192,11 +192,11 @@ phi0=1;gamma0=1;sigma0=0.5;beta0=1;
 
 init_DTM = set_init_DTM(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0)
 
-UpdateDitl=TRUE; UpdateS=TRUE; 
-UpdateLambda=FALSE;UpdateXi=TRUE; 
+UpdateDitl=TRUE; UpdateS=FALSE; 
+UpdateLambda=FALSE;UpdateXi=FALSE; 
 UpdateU=TRUE;
-UpdatePhi=FALSE; UpdateGamma=FALSE;
-UpdateSigma=FALSE; UpdateBeta = FALSE; 
+UpdatePhi=TRUE; UpdateGamma=TRUE;
+UpdateSigma=TRUE; UpdateBeta = TRUE; 
 print = TRUE
 param_DTM = set_param_DTM(H,delta, 
                           a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
@@ -205,20 +205,19 @@ param_DTM = set_param_DTM(H,delta,
                           UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,print)
 
 # Run ---------------------------------------------------------------------
-niter = 10000
-nburn = 1
+niter = 1000
+nburn =    1
 fit = GibbsSampler_DTM(niter,nburn,D,param_DTM,init_DTM)
 
 
 # Diagnosis ---------------------------------------------------------------
 
-phi_mcmc = fit$phi
-plot(phi_mcmc, type = "l")
-plot(fit$gamma, type = "l")
+it_start = 0 + nburn + 1     # da dove parto + burnin + val iniziale
+it_end   = niter + nburn + 1 # ultima iterazione
 
-## Xi and S ------------------------------------------------------------------
+## Xi ------------------------------------------------------------------
 
-Xi_mean <- Reduce("+", fit$Xi)/length(fit$Xi)
+Xi_mean <- Reduce("+", fit$Xi[it_start:it_end])/length(fit$Xi[it_start:it_end])
 par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
 image( 1:Ttot, 1:H, 
        t(Xi_mean),   
@@ -246,7 +245,9 @@ fields::image.plot(
 )
 
 
-S_mean <- Reduce("+", fit$S)/length(fit$S)
+## S  ----------------------------------------------------------------------
+
+S_mean <- Reduce("+", fit$S[it_start:it_end])/length(fit$S[it_start:it_end])
 par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
 image( 1:Ttot, 1:H, 
        t(S_mean),   
@@ -276,7 +277,7 @@ fields::image.plot(
 
 ## N_tl ------------------------------------------------------------------
 
-N_mean <- Reduce("+", fit$N)/length(fit$N)
+N_mean <- Reduce("+", fit$N[it_start:it_end])/length(fit$N[it_start:it_end])
 par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
 image( 1:Ttot, 1:H, 
        N_mean,   
@@ -309,7 +310,7 @@ fields::image.plot(
 
 Dl_means = lapply(1:H, function(l){
   temp = lapply(fit$Dl, function(x){x[[l]]})
-  Reduce("+", temp)/length(temp)
+  Reduce("+", temp[it_start:it_end])/length(temp[it_start:it_end])
 })
 
 for(l in 1:H){
@@ -346,37 +347,61 @@ for(l in 1:H){
 
 ## Lambda --------------------------------------------------------------------
 
-prova = Lambda0[[1]]
-prova = fit$Lambda[[50]][[1]]
-
-par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
-image( 1:Ttot, 1:V, 
-       t(prova),   
-       col = mycol,    
-       xlab = "Time", 
-       ylab = "Words",
-       main = "prova",
-       axes = FALSE )
-axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
-     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
-     cex.axis = 0.7 )
-axis(2, at = seq(1, V, length.out = min(V, 10)), 
-     labels = round(seq(1, H, length.out = min(V, 10))),
-     cex.axis = 0.7)
-box()
-fields::image.plot(
-  1:Ttot, 1:V, prova,
-  col = mycol,
-  legend.only = TRUE,
-  horizontal = FALSE,
-  legend.width = 1.2,            # controls legend thickness
-  legend.shrink = 0.8,           # smaller legend
-  legend.mar = 8.5,                # margin from image
-  legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
-)
+Lambda_means = lapply(1:H, function(l){
+  temp = lapply(fit$Lambda, function(x){x[[l]]})
+  Reduce("+", temp[it_start:it_end])/length(temp[it_start:it_end])
+})
 
 
+for(l in 1:H){
+  Lambda_means_l = Lambda_means[[l]]
+  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+  image( 1:Ttot, 1:V, 
+         t(Lambda_means_l),   
+         col = mycol,    
+         xlab = "Time", 
+         ylab = "Words",
+         main = paste0("<Lambda_",l,">"),
+         axes = FALSE )
+  axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7 )
+  axis(2, at = seq(1, V, length.out = min(V, 10)), 
+       labels = round(seq(1, H, length.out = min(V, 10))),
+       cex.axis = 0.7)
+  box()
+  fields::image.plot(
+    1:Ttot, 1:V, Lambda_means_l,
+    col = mycol,
+    legend.only = TRUE,
+    horizontal = FALSE,
+    legend.width = 1.2,            # controls legend thickness
+    legend.shrink = 0.8,           # smaller legend
+    legend.mar = 8.5,                # margin from image
+    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+  )
+  
+}
 
+
+
+
+## Hyperparameters ---------------------------------------------------------
+
+par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+plot( fit$phi, xlab = "Iter.", ylab = "phi", type = "l" )
+
+par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+plot( fit$gamma, xlab = "Iter.", ylab = "gamma", type = "l" )
+
+par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+plot( fit$sigma, xlab = "Iter.", ylab = "sigma", type = "l" )
+
+par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+plot( fit$beta, xlab = "Iter.", ylab = "beta", type = "l" )
+
+par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+plot( fit$t_sigma_gamma, xlab = "Iter.", ylab = "t", type = "l" )
 
 
 # Brutta ------------------------------------------------------------------

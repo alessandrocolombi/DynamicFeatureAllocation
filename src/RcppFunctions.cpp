@@ -251,7 +251,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   	}
   	// ----------------------------------
   	if(UpdateLambda){
-  		Lambda_mcmc[it-1] = sample_Lambda_itl(engine, Dl_mcmc[it-1], Xi_mcmc[it], delta);
+  		Lambda_mcmc[it] = sample_Lambda_itl(engine, Dl_mcmc[it-1], Xi_mcmc[it], delta);
   	}
   	else{
   		Lambda_mcmc[it] = Lambda_mcmc[it-1];
@@ -306,6 +306,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   	progress_bar.increment(); //update progress bar
   }
 
+  Rcpp::Rcout<<"MCMC completed. Create return object ... "<<std::endl;
   return Rcpp::List::create(  
   	Rcpp::Named("Xi") = Xi_mcmc,
   	Rcpp::Named("S") = S_mcmc,

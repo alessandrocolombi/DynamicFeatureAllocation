@@ -123,6 +123,7 @@ std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std:
   std::vector<MatCol> Lambda_itl(H, MatCol::Zero(V, Ttot)); // Define main object
 
   for(int l=0; l < H; l++){
+      //Rcpp::Rcout<<" ------------- l = "<<l<<" ------------- "<<std::endl;
       std::vector<int> idx_born;  // vector with indexes when a trait is born
       std::vector<int> idx_surv;  // vector with indexes when a trait is survived
       std::vector<int> idx_noact; // vector with indexes when a trait is not active
@@ -143,17 +144,21 @@ std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std:
               flag = FALSE; // if so, stop
             s++;
           }
+          //Rcpp::Rcout<<"i = "<<i<<"; shape = "<<shape<<std::endl;
           temp(i) = rgamma(engine, shape, 1.0);
         }
         temp /= temp.sum(); // normalize to get a Dirichlet distribution
         Lambda_itl[l].col(t) = temp ; // save new value from posterior
+        // Rcpp::Rcout<<std::fixed<<std::setprecision(2)<<"Post.; Lambda_itl["<<l<<"].col("<<t<<") = "<<std::endl<<Lambda_itl[l].col(t).transpose()<<std::endl;
       }
       // These features are deterministically assigned
       for (int t : idx_surv){
         if(t == 0)
           throw std::runtime_error("Error in sample_Lambda_itl: Features are time t=0 can not be survival features");
         Lambda_itl[l].col(t) = Lambda_itl[l].col(t-1);
+        // Rcpp::Rcout<<std::fixed<<std::setprecision(3)<<"Survived; Lambda_itl["<<l<<"].col("<<t<<") = "<<std::endl<<Lambda_itl[l].col(t).transpose()<<std::endl;
       }
+      // These features are drawn from the prior assigned
       for (int t : idx_noact){
         VecCol temp{VecCol::Zero(V)}; 
         for(int i = 0; i < V; i++){
@@ -161,9 +166,11 @@ std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std:
         }
         temp /= temp.sum(); // normalize to get a Dirichlet distribution
         Lambda_itl[l].col(t) = temp ; // save draw from the prior
+        // Rcpp::Rcout<<std::fixed<<std::setprecision(1)<<"Prior.; Lambda_itl["<<l<<"].col("<<t<<") = "<<std::endl<<Lambda_itl[l].col(t).transpose()<<std::endl;
       }
-  }
 
+  }
+  //throw std::runtime_error("FERMO IO ");
   return Lambda_itl;
 }
 
@@ -359,7 +366,6 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
                         const double& var_phi, const double& var_gamma, const double& var_sigma, const double& var_beta,
                         bool UpdatePhi, bool UpdateGamma, bool UpdateSigma, bool UpdateBeta)
 {
-  throw std::runtime_error("FERMO IO: FUNZIONE DA RIVEDERE, LE CONSTANTI DI NORMALIZZAZIONE SONO LOSCHE ");
   sample::rnorm rnorm; // define callable object to generate random samples from a normal distribution
   sample::runif runif; // define callable object to generate random samples from a uniform distribution
 
@@ -377,6 +383,9 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
     throw std::runtime_error("Error in sample_hyparams: sigma_old is out of range");
   if( t_sigma_gamma_old <= 0 || std::isnan(t_sigma_gamma_old) )
     throw std::runtime_error("Error in sample_hyparams: t_sigma_gamma is out of range ");
+  if ( !((S.array() > 0).all()) )
+    throw std::runtime_error("Error in sample_hyparams: some elements of S are not strictlt positive ");
+
 
   // Sample proposed values
   double phi_prime{phi_old};
@@ -406,7 +415,7 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
   if(UpdateBeta){
     // Log-normal proposal
     lognew = rnorm( engine, std::log(b_old), std::sqrt(var_beta) );
-    phi_prime = std::exp(lognew);
+    b_prime = std::exp(lognew);
   }
   if(UpdateGamma || UpdateSigma){
     // Update t_gamma_sigma
@@ -419,50 +428,85 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
   double log_prop_sigma = a_sigma*( std::log(sigma_prime)-std::log(sigma_prime)) + b_sigma*(std::log(1.0 - sigma_prime)-std::log(1.0 - sigma_prime)) ;
   double log_prop_beta  = a_beta* ( std::log(b_prime)    -std::log(b_old)      ) - b_beta*(b_prime-b_old);
 
-  // Auxiliary quantities
-  double sumS0 = S.col(0).sum();
-  double sumXi0 = Xi.col(0).sum();
-  double sumS  = S.sum();
-  double sumXi = Xi.sum();
+  if( std::isnan(log_prop_phi) || std::isnan(log_prop_gamma) || std::isnan(log_prop_sigma) || std::isnan(log_prop_beta) )
+    throw std::runtime_error("Error in sample_hyparams: nan in proposal ratio ");
 
-  // Target ratio
-  double log_target = (double)H * (std::log(sigma_prime) - std::log(sigma_old) + std::lgamma(1.0-sigma_old) - std::lgamma(1.0-sigma_prime) );
-  log_target += (b_old+phi_old-b_prime-phi_prime)*sumS0;
-
-  log_target += (double)H * ( sigma_old*std::log(b_old+t_sigma_gamma_old) + 
-                              std::log( -gsl_expm1(sigma_old*( std::log(b_old) - std::log(b_old+t_sigma_gamma_old) ))  ) );
-  log_target -= (double)H * ( sigma_prime*std::log(b_prime+t_sigma_gamma_prime) + 
-                              std::log( -gsl_expm1(sigma_prime*( std::log(b_prime) - std::log(b_prime+t_sigma_gamma_prime) ))  ) );
-  
-  log_target += (sigma_old-sigma_prime)*sumS + (std::log(phi_prime)-std::log(phi_old))*sumXi;
-  log_target += (b_old + 2*phi_old - b_prime - 2.0*phi_prime)*(sumS - sumS0);
-
-  log_target += ( sigma_old  *(double)H*(double)(Ttot-1) - (sumXi-sumXi0) ) * std::log(b_old+phi_old+t_sigma_gamma_old);
-  log_target -= ( sigma_prime*(double)H*(double)(Ttot-1) - (sumXi-sumXi0) ) * std::log(b_prime+phi_prime+t_sigma_gamma_prime);
-
-  for(int t=0; t < Ttot; t++){
-    for(int l=0; l < H; l++){
-      double ynew = t_sigma_gamma_prime*S(l,t);
-      double yold = t_sigma_gamma_old*S(l,t);
-      log_target += std::log( -gsl_expm1(-ynew) ) - std::log( -gsl_expm1(-yold) );
-      if(t > 0){
-        log_target += std::lgamma( 1.0 - sigma_old + Xi(l,t-1) ) - std::lgamma( 1.0 - sigma_prime + Xi(l,t-1) );
-        log_target += std::log( sigma_prime - Xi(l,t-1) ) - std::log( sigma_old - Xi(l,t-1) );
-        // Final term in Equation (37) Naik:
-        double A_old = b_old + phi_old;
-        double t_old = t_sigma_gamma_old;
-        double x_old = sigma_old - Xi(l,t-1);
-        double A_prime = b_prime + phi_prime;
-        double t_prime = t_sigma_gamma_prime;
-        double x_prime = sigma_prime - Xi(l,t-1);
-
-        log_target += std::log( -gsl_expm1( x_old*(std::log(A_old)     - std::log(A_old+t_old)) ) );
-        log_target -= std::log( -gsl_expm1( x_prime*(std::log(A_prime) - std::log(A_prime+t_prime)) ) );
+  // Define function to compute log normalizing constant
+  auto logZpost = [](double beta, double sigma, double t_const){
+    double res{0.0};
+    if( sigma >= 1 || sigma == 0)
+      throw std::runtime_error("Error in logZpost: sigma must be < 1 ");
+    if(sigma < 0){
+      double arg = -gsl_expm1( -sigma*(std::log(beta)-std::log(beta+t_const)) );
+      if(arg <= 0){
+        Rcpp::Rcout<<"Inner arg = "<<-sigma*(std::log(beta)-std::log(beta+t_const))<<std::endl;
+        Rcpp::Rcout<<"arg = "<<arg<<std::endl;
+        Rcpp::Rcout<<"beta = "<<beta<<std::endl;
+        Rcpp::Rcout<<"sigma = "<<sigma<<std::endl;
+        Rcpp::Rcout<<"t_const = "<<t_const<<std::endl;
+        throw std::runtime_error("Error in logZpost: nan for sigma < 0");
       }
-
+      res += std::lgamma(-sigma) + sigma*std::log(beta) + std::log( arg );
     }
-  }
+    else{
+      double arg = -gsl_expm1(sigma*(std::log(beta)-std::log(beta+t_const)));
+      if(arg <= 0){
+        Rcpp::Rcout<<"beta = "<<beta<<std::endl;
+        Rcpp::Rcout<<"sigma = "<<sigma<<std::endl;
+        Rcpp::Rcout<<"t_const = "<<t_const<<std::endl;
+        throw std::runtime_error("Error in logZpost: nan for sigma in (0,1)");
+      }
+      res += std::lgamma(1.0-sigma) - std::log(sigma) + sigma*std::log(beta+t_const) + std::log( arg );
+    }
+    return res;
+  };
 
+  // Auxiliary quantities
+  double sumS0 = S.col(0).sum(); // \sum_{l=1}^H S_{l,1}
+  double sumS  = S.sum(); // \sum_{t=1}^T \sum_{l=1}^H S_{l,t}
+  double sumlogS = S.array().log().sum(); // \sum_{t=1}^T \sum_{l=1}^H logS_{l,t}
+  //double sumXi0 = Xi.col(0).sum(); // \sum_{l=1}^H Xi_{l,1}
+  double sumXi = Xi.sum(); // \sum_{t=1}^T \sum_{l=1}^H Xi_{l,t}
+  double b_phi_old = b_old + phi_old;
+  double b_phi_prime = b_prime + phi_prime;
+  
+  // Target ratio
+  double log_target{0.0};
+  log_target += sumXi*( std::log(phi_prime) - std::log(phi_old) );
+  //Rcpp::Rcout<<"log_target 1 = "<<log_target<<std::endl;
+  log_target += 2.0*( phi_old - phi_prime )*( sumS - sumS0 );
+  //Rcpp::Rcout<<"log_target 2 = "<<log_target<<std::endl;
+  log_target += sumlogS * ( sigma_old - sigma_prime );
+  //Rcpp::Rcout<<"log_target 3 = "<<log_target<<std::endl;
+  log_target += ( b_old - b_prime )*( sumS - sumS0 );
+  //Rcpp::Rcout<<"log_target 4 = "<<log_target<<std::endl;
+  log_target += (double)H * ( std::lgamma(1.0 - sigma_old) - std::log(1.0 - sigma_prime) + std::log(sigma_prime) - std::log(sigma_old) );
+  //Rcpp::Rcout<<"log_target 5 = "<<log_target<<std::endl;
+  log_target += (double)H * ( sigma_old*std::log(b_old*t_sigma_gamma_old) - sigma_prime*std::log(b_prime*t_sigma_gamma_prime) );
+  //Rcpp::Rcout<<"log_target 6 = "<<log_target<<std::endl;
+  log_target += (double)H * ( std::log( -gsl_expm1( sigma_old  *( std::log(b_old)   - std::log(b_old+t_sigma_gamma_old    ) ) ) ) - 
+                              std::log( -gsl_expm1( sigma_prime*( std::log(b_prime) - std::log(b_prime+t_sigma_gamma_prime) ) ) ) );
+  //Rcpp::Rcout<<"log_target 7 = "<<log_target<<std::endl;
+  
+  // Compute log( -expm1(-t_{sigma,gamma}*S(l,t)) ) for all l=1...H and t=1...T
+  Eigen::ArrayXXd term_prime = (-t_sigma_gamma_prime * S.array()).unaryExpr([](double x){ return std::log(-gsl_expm1(x)); });
+  Eigen::ArrayXXd term_old   = (-t_sigma_gamma_old   * S.array()).unaryExpr([](double x){ return std::log(-gsl_expm1(x)); });
+  log_target += (term_prime - term_old).sum();
+  //Rcpp::Rcout<<"log_target 8 = "<<log_target<<std::endl;
+  // Sum of posterior normalizing constants
+
+  Eigen::ArrayXXd term_old2 = (Xi.array()).unaryExpr([&](double x){
+      return logZpost(b_phi_old, sigma_old - x, t_sigma_gamma_old);
+  });
+  Eigen::ArrayXXd term_prime2 = (Xi.array()).unaryExpr([&](double x){
+      return logZpost(b_phi_prime, sigma_prime - x, t_sigma_gamma_prime);
+  });
+  log_target += (term_old2 - term_prime2).sum();
+  // Rcpp::Rcout<<"log_target 9 = "<<log_target<<std::endl;
+
+  if( std::isnan(log_target) )
+    throw std::runtime_error("Error in sample_hyparams: nan in target ratio ");
+  
   // Final log acceptance probability
   double log_acc = log_target + log_prop_phi + log_prop_gamma + log_prop_sigma + log_prop_beta;
 
@@ -473,25 +517,26 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
   double b_res{b_old};
   double t_sigma_gamma_res{t_sigma_gamma_old};
 
+  double pacc = std::exp( std::min(0.0,log_acc) ); // prob. of accepting the move
   double u = runif(engine);
-  if( std::log(u) < log_acc ){
-    phi_res = phi_prime;
-    gamma_res = gamma_res;
+  if( u < pacc ){
+    phi_res   = phi_prime;
+    gamma_res = gamma_prime;
     sigma_res = sigma_prime;
-    b_res = b_prime;
+    b_res     = b_prime;
     t_sigma_gamma_res = t_sigma_gamma_prime;
   }
   // Checks:
-  if( phi_res <= 0 )
-    throw std::runtime_error("Error in sample_hyparams: phi can not be negative or zero ");
-  if( gamma_res <= 0 )
-    throw std::runtime_error("Error in sample_hyparams: gamma can not be negative or zero ");
-  if( b_res <= 0 )
-    throw std::runtime_error("Error in sample_hyparams: b can not be negative or zero ");
-  if( sigma_res <= 0.0 || sigma_res >= 1.0 )
+  if( phi_res <= 0 || std::isnan(phi_res) )
+    throw std::runtime_error("Error in sample_hyparams: phi can not be negative or zero or nan");
+  if( gamma_res <= 0 || std::isnan(gamma_res) )
+    throw std::runtime_error("Error in sample_hyparams: gamma can not be negative or zero or nan");
+  if( b_res <= 0 || std::isnan(b_res) )
+    throw std::runtime_error("Error in sample_hyparams: b can not be negative or zero or nan");
+  if( sigma_res <= 0.0 || sigma_res >= 1.0 || std::isnan(sigma_res) )
     throw std::runtime_error("Error in sample_hyparams: sigma must be in (0,1) ");
-  if( t_sigma_gamma_res <= 0.0 )
-    throw std::runtime_error("Error in sample_hyparams: t_sigma_gamma_res can not be negative or zero ");
+  if( t_sigma_gamma_res <= 0.0 || std::isnan(t_sigma_gamma_res) )
+    throw std::runtime_error("Error in sample_hyparams: t_sigma_gamma_res can not be negative or zero or nan");
   
   // Return
   VecCol res_vec(5);
