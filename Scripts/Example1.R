@@ -144,8 +144,8 @@ fields::image.plot(
 # Set options -------------------------------------------------------------
 seed = 22123
 
-H = 10 # number of atoms
-delta = 0.01 # Dirichlet parameter
+H = 20 # number of atoms
+delta = 0.1 # Dirichlet parameter
 
 # Hyperparameters
 a_phi=1;b_phi=1;
@@ -182,8 +182,8 @@ Xi0 = matrix(0, nrow = H, ncol = Ttot)
 Xi0[1:3,] = Xi
 # ---
 # Set S0 to the true one
-load("Brutta_Strue.Rdat")
-S0 = S_mean
+# load("Brutta_Strue.Rdat")
+# S0 = S_mean
 # ---
 
 
@@ -192,11 +192,11 @@ phi0=1;gamma0=1;sigma0=0.5;beta0=1;
 
 init_DTM = set_init_DTM(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0)
 
-UpdateDitl=TRUE; UpdateS=FALSE; 
-UpdateLambda=FALSE;UpdateXi=FALSE; 
+UpdateDitl=TRUE; UpdateS=TRUE; 
+UpdateLambda=TRUE;UpdateXi=TRUE; 
 UpdateU=TRUE;
-UpdatePhi=TRUE; UpdateGamma=TRUE;
-UpdateSigma=TRUE; UpdateBeta = TRUE; 
+UpdatePhi=FALSE; UpdateGamma=FALSE;
+UpdateSigma=FALSE; UpdateBeta = TRUE; 
 print = TRUE
 param_DTM = set_param_DTM(H,delta, 
                           a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
@@ -205,7 +205,7 @@ param_DTM = set_param_DTM(H,delta,
                           UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,print)
 
 # Run ---------------------------------------------------------------------
-niter = 1000
+niter = 5000
 nburn =    1
 fit = GibbsSampler_DTM(niter,nburn,D,param_DTM,init_DTM)
 
@@ -400,16 +400,10 @@ plot( fit$sigma, xlab = "Iter.", ylab = "sigma", type = "l" )
 par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
 plot( fit$beta, xlab = "Iter.", ylab = "beta", type = "l" )
 
-par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+par(mfrow = c(1,2), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
 plot( fit$t_sigma_gamma, xlab = "Iter.", ylab = "t", type = "l" )
+plot( log(fit$t_sigma_gamma), xlab = "Iter.", ylab = "log(t)", type = "l" )
 
 
 # Brutta ------------------------------------------------------------------
-
-fit$Dl[[50]][[1]][,1] + 
-fit$Dl[[50]][[2]][,1] + 
-fit$Dl[[50]][[3]][,1] + 
-fit$Dl[[50]][[4]][,1] +
-fit$Dl[[50]][[5]][,1] 
-
 

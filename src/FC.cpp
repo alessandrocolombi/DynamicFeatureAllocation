@@ -202,7 +202,10 @@ MatCol sample_Stl(sample::GSL_RNG const & engine, const MatIntCol& Xi, const Mat
       }
       if( shape <= 0 || rate <= 0 || std::isnan(shape) || std::isnan(rate) )
           throw std::runtime_error("Error in sample_Stl, invalid shape or rate");
-      S(l,t) = rgamma(engine, shape, 1.0/rate);
+      
+      S(l,t) = rgamma(engine, shape, 1.0/rate); // sample new value
+      if( S(l,t) < 0 ) // check positiveness for numeric stability
+        S(l,t) = 1e-16;
     }
   }
   return S;
@@ -230,14 +233,23 @@ MatCol sample_Utl(sample::GSL_RNG const & engine, const MatCol& S, const double&
 
   for(int l=0; l < H; l++){
     for(int t=0; t < Ttot; t++){
-      if(S(l,t) <= 0)
+
+      if(S(l,t) < 0.0) // check for error
         throw std::runtime_error("Error in sample_Utl: S_tl can not be negative or zero ");
       
-      double Y = runif(engine);
-      double temp = invCDF(S(l,t), Y);
-      if( temp <= 0 || std::isnan(temp) ){
-        Rcpp::Rcout<<"t = "<<t<<"; l = "<<l<<"temp = "<<temp<<std::endl;
-        throw std::runtime_error("Error in sample_Utl: U is out of range ");
+      double Y;
+      double temp;
+      if(S(l,t) < 1e-10){ // The parameter is so small to be considered as 0
+        temp = 0.0;
+      }
+      else{
+        Y = runif(engine);
+        temp = invCDF(S(l,t), Y);
+      }
+      if( temp < 0.0 || std::isnan(temp) ){
+        Rcpp::Rcout<<"t = "<<t<<"; l = "<<l<<"; temp = "<<temp<<std::endl;
+        Rcpp::Rcout<<"S(l,t) = "<<S(l,t)<<"; Y = "<<Y<<"; t_sigma_gamma = "<<t_sigma_gamma<<std::endl;
+        throw std::runtime_error("Error in sample_Utl: U is negative or NaN ");
       }
       U(l,t) = temp;
     }
@@ -383,8 +395,8 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
     throw std::runtime_error("Error in sample_hyparams: sigma_old is out of range");
   if( t_sigma_gamma_old <= 0 || std::isnan(t_sigma_gamma_old) )
     throw std::runtime_error("Error in sample_hyparams: t_sigma_gamma is out of range ");
-  if ( !((S.array() > 0).all()) )
-    throw std::runtime_error("Error in sample_hyparams: some elements of S are not strictlt positive ");
+  if ( !((S.array() >= 0).all()) )
+    throw std::runtime_error("Error in sample_hyparams: some elements of S are negative ");
 
 
   // Sample proposed values
@@ -437,9 +449,10 @@ VecCol sample_hyparams( sample::GSL_RNG const & engine, const MatIntCol& Xi, con
     if( sigma >= 1 || sigma == 0)
       throw std::runtime_error("Error in logZpost: sigma must be < 1 ");
     if(sigma < 0){
-      double arg = -gsl_expm1( -sigma*(std::log(beta)-std::log(beta+t_const)) );
+      double inner_arg = -sigma*(std::log(beta)-std::log(beta+t_const));
+      double arg = -gsl_expm1( inner_arg );
       if(arg <= 0){
-        Rcpp::Rcout<<"Inner arg = "<<-sigma*(std::log(beta)-std::log(beta+t_const))<<std::endl;
+        Rcpp::Rcout<<"Inner arg = "<<inner_arg<<std::endl;
         Rcpp::Rcout<<"arg = "<<arg<<std::endl;
         Rcpp::Rcout<<"beta = "<<beta<<std::endl;
         Rcpp::Rcout<<"sigma = "<<sigma<<std::endl;
