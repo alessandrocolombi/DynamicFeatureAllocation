@@ -43,14 +43,22 @@ sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_it
   
   
   std::vector<MatUnsCol> D_itl(H, MatUnsCol::Zero(V, Ttot)); // Define main object
-    
+      //std::vector<Eigen::MatrixXd> zeta_itl(H); // Define auxiliary vector to store zeta_it^l values
+      //// Precompute all zeta_itl values
+      //for(int l = 0; l < H; l++) {
+        //zeta_itl[l] = Lambda_itl[l].array() * Xi.array();
+      //}
+
+  // Start looping to update D_itl elements 
   for(int i = 0; i < V; i++) {
     for(int t = 0; t < Ttot; t++) {
 
       //Rcpp::Rcout<<" -------------- "<<std::endl;
       //Rcpp::Rcout<<"("<<i<<", "<<t<<") : D_it = "<<D(i,t)<<std::endl;
-      VecCol zeta_it{VecCol::Zero(H)}; // inizialize weights to 0
+      VecCol zeta_it{VecCol::Zero(H)}; // inizialize weights to 0 // <--- old code
       // Build zeta_it = Lambda[l](i,t) * Xi(l,t)
+
+      //old code
       for(int l = 0; l < H; l++) {
         zeta_it(l) = Lambda_itl[l](i,t) * Xi(l,t);
         if(std::isnan(zeta_it(l)))

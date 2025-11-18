@@ -227,7 +227,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   for(int it = 1; it <= niter_tot; it++){
 
   	// ----------------------------------
-  	Rcpp::Rcout<<"UpdateXi"<<std::endl;
+  	//Rcpp::Rcout<<"UpdateXi"<<std::endl;
   	if(UpdateXi){
   		Xi_mcmc[it] = sample_Xi_tl(engine, Xi_mcmc[it-1], S_mcmc[it-1], N_mcmc[it-1],
   		                       			phi_mcmc[it-1], sigma_mcmc[it-1], beta_mcmc[it-1], 
@@ -237,7 +237,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   		Xi_mcmc[it] = Xi_mcmc[it-1];
   	}
 		// ----------------------------------
-		Rcpp::Rcout<<"UpdateS"<<std::endl;
+		//Rcpp::Rcout<<"UpdateS"<<std::endl;
   	if(UpdateS){
 			S_mcmc[it] = sample_Stl(engine, Xi_mcmc[it], U_mcmc[it-1], phi_mcmc[it-1], sigma_mcmc[it-1], beta_mcmc[it-1]);
   	}
@@ -245,7 +245,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   		S_mcmc[it] = S_mcmc[it-1];
   	}
   	// ----------------------------------
-  	Rcpp::Rcout<<"UpdateU"<<std::endl;
+  	//Rcpp::Rcout<<"UpdateU"<<std::endl;
   	if(UpdateU){
 			U_mcmc[it] = sample_Utl(engine, S_mcmc[it], t_sigma_gamma_mcmc[it-1]);
   	}
@@ -253,7 +253,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   		U_mcmc[it] = U_mcmc[it-1];
   	}
   	// ----------------------------------
-  	Rcpp::Rcout<<"UpdateLambda"<<std::endl;
+  	//Rcpp::Rcout<<"UpdateLambda"<<std::endl;
   	if(UpdateLambda){
   		Lambda_mcmc[it] = sample_Lambda_itl(engine, Dl_mcmc[it-1], Xi_mcmc[it], delta);
   	}
@@ -269,7 +269,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   		}
   	}
   	// ----------------------------------
-  	Rcpp::Rcout<<"UpdateDitl"<<std::endl;
+  	//Rcpp::Rcout<<"UpdateDitl"<<std::endl;
   	if(UpdateDitl){
   		auto aux = sample_Ditl(engine, Lambda_mcmc[it], Xi_mcmc[it], D);
 			Dl_mcmc[it] = aux.first;
@@ -299,7 +299,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   		beta_mcmc[it]  = beta_mcmc[it-1]; 
   		t_sigma_gamma_mcmc[it] = t_sigma_gamma_mcmc[it-1];
   	}
-  	throw std::runtime_error("FERMO IO ");
+  	//throw std::runtime_error("FERMO IO ");
   	//Check for User Interruption
     try{
     	Rcpp::checkUserInterrupt();
