@@ -21,7 +21,7 @@ colnames(data) = Presidents_all[,2]
 
 # Reduced sample
 data = as.matrix(data)
-data = data[,41:60]
+# data = data[,41:60]
 
 # Dimensions
 V = nrow(data)
@@ -69,7 +69,7 @@ fields::image.plot(
 # Set options -------------------------------------------------------------
 seed = 22123
 
-H = 100 # number of atoms
+H = 30 # number of atoms
 delta = 0.01 # Dirichlet parameter
 
 # Hyperparameters
@@ -90,26 +90,7 @@ Lambda0 = lapply(Lambda0, function(x){
   A = apply(A,2,function(y){ a = rgamma(n=V, shape = delta, rate = 1); a/sum(a) })
   A
 })
-# ---
-# Set Lambda0 to the a chosen value
-# for(t in 1:6){
-#   Lambda0[[1]][,t] = Lambda[,1]
-# }
-# for(t in 7:14){
-#   Lambda0[[2]][,t] = Lambda[,2]
-# }
-# for(t in 15:23){
-#   Lambda0[[3]][,t] = Lambda[,3]
-# }
-# ---
-# Set Xi0 to a chosen value
-# Xi0 = matrix(0, nrow = H, ncol = Ttot)
-# Xi0[1:3,] = Xi
-# ---
-# Set S0 to the true one
-# load("Brutta_Strue.Rdat")
-# S0 = S_mean
-# ---
+
 
 
 phi0=1;gamma0=1;sigma0=0.5;beta0=1;
@@ -122,15 +103,16 @@ UpdateLambda=TRUE;UpdateXi=TRUE;
 UpdateU=TRUE;
 UpdatePhi=FALSE; UpdateGamma=FALSE;
 UpdateSigma=FALSE; UpdateBeta = FALSE; 
-print = TRUE
+print = TRUE; JointAdp = FALSE
 param_DTM = set_param_DTM(H,delta, 
                           a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
                           var_phi,var_gamma,var_sigma,var_beta,
                           UpdateDitl,UpdateS,UpdateLambda,UpdateXi, UpdateU,
-                          UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,print)
+                          UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,seed,
+                          print,JointAdp)
 
 # Run ---------------------------------------------------------------------
-niter = 1000
+niter = 5000
 nburn =    1
 data  = as.matrix(data)
 fit = GibbsSampler_DTM(niter,nburn,data,param_DTM,init_DTM)
@@ -332,4 +314,24 @@ plot( log(fit$t_sigma_gamma), xlab = "Iter.", ylab = "log(t)", type = "l" )
 
 
 # Brutta ------------------------------------------------------------------
+
+it_last = 1002
+Xi_last = fit$Xi[[it_last]]
+Lambda_last = fit$Lambda[[it_last]]
+
+Xi_last[,1]
+active = which(Xi_last[,1] > 0)
+Lambda_active = Lambda_last[active]
+Lambda_active[[1]]
+
+length(fit)
+
+
+
+
+
+
+
+
+
 

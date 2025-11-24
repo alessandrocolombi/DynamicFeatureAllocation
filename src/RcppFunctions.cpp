@@ -174,6 +174,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
 	bool UpdateSigma  = as<bool>(param_DTM["UpdateSigma"]);
 	bool UpdateBeta   = as<bool>(param_DTM["UpdateBeta"]);
 	bool print        = as<bool>(param_DTM["print"]);
+	bool JointAdp     = as<bool>(param_DTM["JointAdp"]);
 	
 	int seed   = as<int>(param_DTM["seed"]);
 	sample::GSL_RNG engine(seed);
@@ -220,6 +221,13 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   std::vector<double> sigma_mcmc(niter_tot+1,-1.0); sigma_mcmc[0] = sigma0;
   std::vector<double> beta_mcmc(niter_tot+1,-1.0);  beta_mcmc[0] = beta0;
   std::vector<double> t_sigma_gamma_mcmc(niter_tot+1,-1.0);  t_sigma_gamma_mcmc[0] = t_sigma_gamma0;
+
+  // Usefull quantities for adaptive MCMC
+  double s_adp = 2.83;
+  MatCol Cadp = MatCol::Identity(2,2);
+  MatCol Sigma_prop = var_beta * MatCol::Identity(2,2);
+  VecCol RunningMean = VecCol::Zero(2);
+  RunningMean(0) = gamma_mcmc[0]; RunningMean(1) = sigma_mcmc[0];
 
   // Start MCMC loop
   Rcpp::Rcout<<"Preprocessing finished. Start MCMC ... "<<std::endl;
@@ -281,11 +289,55 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   	}
   	// ----------------------------------
   	if(UpdatePhi || UpdateBeta || UpdateGamma || UpdateSigma){
-  		VecCol aux = sample_hyparams( engine, Xi_mcmc[it], S_mcmc[it], 
-                         						phi_mcmc[it-1],  gamma_mcmc[it-1],  sigma_mcmc[it-1],  beta_mcmc[it-1], t_sigma_gamma_mcmc[it-1],
-                         						a_phi, b_phi, a_gamma, b_gamma, a_sigma, b_sigma, a_beta, b_beta,  
-                         						var_phi,  var_gamma,  var_sigma,  var_beta,
-			                        			UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta);
+
+		  	if(it > 100 ){
+		  		Sigma_prop = s_adp*Cadp + 1e-6 * MatCol::Identity(2, 2);
+		  	}
+		  	
+		    //MatCol Sigma_prop = MatCol::Zero(2,2);
+		    //Sigma_prop(0,0) = 4.10576e-05;
+		    //Sigma_prop(1,0) = 3.12258e-06; Sigma_prop(0,1) = 3.12258e-06;
+		    //Sigma_prop(1,1) = 8.33684e-06;
+
+		  	//Rcpp::Rcout<<" +++++++++++++++++++++ "<<std::endl;
+		  	//Rcpp::Rcout<<" it = "<<it<<std::endl;
+		    //Rcpp::Rcout<<"Sigma_prop:"<<std::endl<<Sigma_prop<<std::endl;
+
+  		VecCol aux = sample_hyparams_general( engine, Xi_mcmc[it], S_mcmc[it], 
+		                         								phi_mcmc[it-1],  gamma_mcmc[it-1],  sigma_mcmc[it-1],  beta_mcmc[it-1], t_sigma_gamma_mcmc[it-1],
+		                         								a_phi, b_phi, a_gamma, b_gamma, a_sigma, b_sigma, a_beta, b_beta,  
+		                         								var_beta, Sigma_prop, s_adp, JointAdp, UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta);
+
+  		//RunningMean(0) = ( (double)(it-1) )/( (double)(it) )*RunningMean(0) + 1.0/( (double)(it) ) * aux[1]; 
+  		//RunningMean(1) = ( (double)(it-1) )/( (double)(it) )*RunningMean(1) + 1.0/( (double)(it) ) * aux[2]; 
+  		if(it > 2 && it < 50000 && JointAdp){
+		  	MatCol gs = MatCol::Zero( it+1, 2 );
+		  	for(int jj = 0; jj < it; jj++){
+		  		gs(jj,0) = gamma_mcmc[jj];
+		  		gs(jj,1) = sigma_mcmc[jj];
+		  	}
+		  	gs(it,0) = aux[1]; gs(it,1) = aux[2];
+				Cadp = my_cov( gs );
+  			//VecCol diff = VecCol::Zero(2);
+  			//diff(0) = RunningMean(0) - aux[1];
+  			//diff(1) = RunningMean(1) - aux[2];
+  			//Cadp = ( (double)(it-2) )/( (double)(it-1) )*Cadp + 1.0/( (double)(it) ) * ( diff*diff.transpose() );
+  			s_adp = std::exp( std::log(s_adp) + std::pow(it,-0.7)*( aux[5] - 0.234 ) );
+  			if(s_adp > 10)
+  				s_adp = 1.0;
+  			if(s_adp < 1e-30)
+  				s_adp = 1e-5;
+  			//Rcpp::Rcout<<" ------- "<<std::endl;
+  			//Rcpp::Rcout<<"Cadp:"<<std::endl<<Cadp<<std::endl;
+  			//Rcpp::Rcout<<"RunningMean:"<<std::endl<<RunningMean<<std::endl;
+  			//Rcpp::Rcout<<"s_adp:"<<std::endl<<s_adp<<std::endl;
+  			//Rcpp::Rcout<<" ---------------------------- "<<std::endl;
+  		}
+	  				//aux = sample_hyparams( engine, Xi_mcmc[it], S_mcmc[it], 
+	                         					//phi_mcmc[it-1],  gamma_mcmc[it-1],  sigma_mcmc[it-1],  beta_mcmc[it-1], t_sigma_gamma_mcmc[it-1],
+	                         					//a_phi, b_phi, a_gamma, b_gamma, a_sigma, b_sigma, a_beta, b_beta,  
+	                         					//var_phi,  var_gamma,  var_sigma,  var_beta,
+				                        		//UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta);
 	  	phi_mcmc[it]   = aux[0];
 	  	gamma_mcmc[it] = aux[1];
 	  	sigma_mcmc[it] = aux[2];

@@ -8,6 +8,7 @@
 #include <RcppEigen.h>
 #include <RcppGSL.h>
 #include <gsl/gsl_sf.h>     //For special functions such as factorials
+#include <gsl/gsl_math.h>   //For gsl_log1p
 
 // Include file with basic libraries to include
 #include "headers.h"
@@ -61,4 +62,6 @@ std::map<int,int> table_Rcpp(const Rcpp::IntegerVector& s);
 // [[Rcpp::export]]
 List classify_indices_cpp(const NumericVector& Z);
 
+// [[Rcpp::export]]
+double logZ_BFRY(double beta, double sigma, double t_const);
 #endif

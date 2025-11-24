@@ -3,7 +3,7 @@ set_param_DTM = function(H,delta,a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_b
                          var_phi,var_gamma,var_sigma,var_beta,
                          UpdateDitl,UpdateS,UpdateLambda,UpdateXi, UpdateU,
                          UpdatePhi,UpdateGamma,UpdateSigma,UpdateBeta,
-                         seed, print){
+                         seed, print, JointAdp){
   return(list(
     "H" = H,
     "delta" = delta,
@@ -29,6 +29,7 @@ set_param_DTM = function(H,delta,a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_b
     "UpdateSigma" = UpdateSigma,
     "UpdateBeta" = UpdateBeta,
     "seed" = seed,
+    "JointAdp" = JointAdp,
     "print" = print
   ))
 }
@@ -74,6 +75,34 @@ GibbsSampler_DTM = function(niter,nburn,data,param_DTM,init_DTM){
 }
 
 # Utilities ---------------------------------------------------------------
+
+find_indices <- function(Z_l) {
+  Ttot <- length(Z_l)
+  
+  idx_born  <- integer(0)
+  idx_surv  <- integer(0)
+  idx_noact <- integer(0)
+  
+  for (t in seq_len(Ttot)) {
+    if (Z_l[t] > 0) {
+      # active
+      if (t == 1 || Z_l[t - 1] == 0) {
+        idx_born <- c(idx_born, t)
+      } else {
+        idx_surv <- c(idx_surv, t)
+      }
+    } else {
+      # no activity
+      idx_noact <- c(idx_noact, t)
+    }
+  }
+  
+  list(
+    idx_born  = idx_born,
+    idx_surv  = idx_surv,
+    idx_noact = idx_noact
+  )
+}
 
 zipfs_decay = function(n,a){
   sapply(1:n,function(i){i^{-a}})

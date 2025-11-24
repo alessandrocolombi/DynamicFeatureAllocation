@@ -69,6 +69,8 @@ xlabs = sapply(names(Nt), substr,1,4)
 ylabs = round(seq(0, max(Nt), by=500) * 1e-3,1)
 
 # Saved in custom size: 6x14 in
+if(save_img)
+  pdf( paste0("img/SpeechData_Nt_","all.pdf") )
 par(mfrow = c(1,1), mgp=c(2,0.5,0), mar = c(3,3,1,0))
 barplot( height = Nt, 
          names.arg = "", las = 2, col = "darkblue", border = NA,
@@ -76,12 +78,64 @@ barplot( height = Nt,
 axis( side = 2, at = ylabs*1e3, labels = ylabs, las = 1)
 text( x = bp1, y = par("usr")[3] - 0.02*max(Nt), 
       labels = xlabs, srt = 45, adj = 1, xpd = TRUE, cex = 0.5 )
+if(save_img)
+  dev.off()
 
+
+
+# Words freq.
+Ni = rowSums(data)
+Ni = sort(Ni, decreasing = TRUE)
+# Ni = Ni[1:100]
+# Ni = Ni[which(Ni > 10)]
+# pdf(NULL)
+#   bp1 <- barplot(height = Ni)
+# dev.off()
+xlabs = sapply(names(Ni), substr,1,4)
+ylabs = round(seq(0, max(Ni), by=100),1)
+
+# Saved in custom size: 6x14 in
+if(save_img)
+  pdf( paste0("../img/SpeechData_Ni_","all.pdf") )
+par(mfrow = c(1,1), mgp=c(2,0.5,0), mar = c(3,3,1,0))
+barplot( height = Ni, 
+         names.arg = "", las = 2, col = "darkblue", border = NA,
+         main = " ", xlab = "Word", ylab = "#Occur.", yaxt = "n" )
+axis( side = 2, at = ylabs, labels = ylabs, las = 1)
+# text( x = bp1, y = par("usr")[3] - 0.02*max(Ni), 
+#       labels = xlabs, srt = 45, adj = 1, xpd = TRUE, cex = 0.5 )
+if(save_img)
+  dev.off()
+
+
+
+colnames(data) = Presidents_all[,2]
+vocabulary = rownames(data)
+
+# Saved in custom size: 6x14 in
+if(save_img)
+  pdf( paste0("../img/SpeechData_AllPres_","all.pdf"))
+par(mfrow = c(3,3), mgp=c(2,0.5,0), mar = c(3,3,1,0))
+for(t in 1:60){
+  ft = data[,t]
+  ylabs = seq(0,30,by = 10)
+  barplot( height = ft, 
+           names.arg = "", las = 2, col = "darkblue", border = NA,
+           main = Presidents_all[t,2], xlab = "Word", ylab = "#Occur.", yaxt = "n",
+           ylim = c(0,30))
+  axis( side = 2, at = ylabs, labels = ylabs, las = 1)
+  # text( x = bp1, y = par("usr")[3] - 0.02*max(ft), 
+  #       labels = vocabulary, srt = 45, adj = 1, xpd = TRUE, cex = 0.5 )
+}
+if(save_img)
+  dev.off()
 
 
 # Read top r data ---------------------------------------------------------
 
 rgrid = c(3,10,20,50,100,200)
+
+# Matrici
 for(r in rgrid){
   data = read.table(paste0("../data/SpeechData_top",r,".txt"))
   colnames(data) = Presidents_all[,2]
@@ -128,7 +182,7 @@ for(r in rgrid){
   
 }
 
-
+# Plot Nt
 for(r in rgrid){
   data = read.table(paste0("../data/SpeechData_top",r,".txt"))
   colnames(data) = Presidents_all[,2]
@@ -142,15 +196,80 @@ for(r in rgrid){
   ylabs = round(seq(0, max(Nt), by=500) * 1e-2,1)
   
   # Saved in custom size: 6x14 in
+  if(save_img)
+    pdf( paste0("img/SpeechData_Nt_","top_",r,".pdf") )
   par(mfrow = c(1,1), mgp=c(2,0.5,0), mar = c(3,3,1,0))
   barplot( height = Nt, 
            names.arg = "", las = 2, col = "darkblue", border = NA,
-           main = " ", xlab = "Year", ylab = "#words. (x10^-2)", yaxt = "n" )
+           main = paste0("r = ",r), xlab = "Year", ylab = "#words. (x10^-2)", yaxt = "n" )
   axis( side = 2, at = ylabs*1e2, labels = ylabs, las = 1)
   text( x = bp1, y = par("usr")[3] - 0.02*max(Nt), 
         labels = xlabs, srt = 45, adj = 1, xpd = TRUE, cex = 0.5 )
-  
+  if(save_img)
+    dev.off()
+
 }
+
+# Plot Ni
+for(r in rgrid){
+  data = read.table(paste0("../data/SpeechData_top",r,".txt"))
+  colnames(data) = Presidents_all[,2]
+  # Words freq.
+  Ni = rowSums(data)
+  Ni = sort(Ni, decreasing = TRUE)
+  # Ni = Ni[1:100]
+  pdf(NULL)
+    bp1 <- barplot(height = Ni)
+  dev.off()
+  xlabs = sapply(names(Ni), substr,1,4)
+  ylabs = round(seq(0, max(Ni), by=100),1)
+  
+  # Saved in custom size: 6x14 in
+  if(save_img)
+    pdf( paste0("img/SpeechData_Ni_","top_",r,".pdf") )
+  par(mfrow = c(1,1), mgp=c(2,0.5,0), mar = c(3,3,1,0))
+  barplot( height = Ni, 
+           names.arg = "", las = 2, col = "darkblue", border = NA,
+           main = paste0("r = ",r), xlab = "Word", ylab = "#Occur.", yaxt = "n" )
+  axis( side = 2, at = ylabs, labels = ylabs, las = 1)
+  text( x = bp1, y = par("usr")[3] - 0.02*max(Ni), 
+        labels = xlabs, srt = 45, adj = 1, xpd = TRUE, cex = 0.5 )
+  if(save_img)
+    dev.off()
+}
+
+
+# Speech specific distributions -------------------------------------------
+
+
+r = 20
+data = read.table(paste0("../data/SpeechData_top",r,".txt"))
+colnames(data) = Presidents_all[,2]
+vocabulary = rownames(data)
+
+# Saved in custom size: 6x14 in
+if(save_img)
+  pdf( paste0("../img/SpeechData_AllPres_","top_",r,".pdf") )
+par(mfrow = c(3,3), mgp=c(2,0.5,0), mar = c(3,3,1,0))
+for(t in 1:ncol(data)){
+  ft = data[,t]
+  # pdf(NULL)
+  #   bp1 <- barplot(height = ft)
+  # dev.off()
+  # ylabs = round(seq(0, max(ft), by=10),1)
+  ylabs = c(0,10,20,30)
+
+  barplot( height = ft, 
+           names.arg = "", las = 2, col = "darkblue", border = NA,
+           main = Presidents_all[t,2], xlab = "Word", ylab = "#Occur.", yaxt = "n",
+           ylim = c(0,30))
+  axis( side = 2, at = ylabs, labels = ylabs, las = 1)
+  # text( x = bp1, y = par("usr")[3] - 0.02*max(ft), 
+  #       labels = vocabulary, srt = 45, adj = 1, xpd = TRUE, cex = 0.5 )
+}
+if(save_img)
+  dev.off()
+
 
 # Brutta ------------------------------------------------------------------
 

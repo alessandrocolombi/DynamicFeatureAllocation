@@ -253,3 +253,59 @@ List classify_indices_cpp(const NumericVector& Z)
     _["idx_noact"] = idx_noact
   );
 }
+
+
+double logZ_BFRY(double beta, double sigma, double t_const)
+{
+    const double EPS_TINY = 1e-16; // tolerance for tiny rounding errors
+    
+    if (beta <= 0)
+        throw std::runtime_error("Error in logZ_BFRY: beta must be positive");
+    if (t_const <= 0)
+        throw std::runtime_error("Error in logZ_BFRY: t_const must be positive");
+
+    if (sigma == 0 || sigma >= 1.0)
+        throw std::runtime_error("Error in logZ_BFRY: sigma must be < 1 and != 0");
+
+    // x = sigma * log(1 + t/beta)
+    const double t_over_beta = t_const / beta;
+    const double L = gsl_log1p(t_over_beta);   // safe for small t/beta
+    const double x = sigma * L; 
+
+    // Prepare safe expm1 value
+    // For sigma > 0 we will need expm1(x) (>0).
+    // For sigma < 0 we will need -expm1(x) (>0).
+    double e = std::expm1(x); // exp(x) - 1
+    double lg;
+    if(sigma > 0.0){
+      lg = std::lgamma(1.0 - sigma) - std::log(sigma); //lG(-sigma) = lG(sigma) - log(sigma)
+    }
+    else{
+      e = -e;  // sigma < 0 : x < 0 so e = expm1(x) < 0 and -e = -expm1(x) > 0
+      lg = std::lgamma(-sigma); //lG(-sigma)
+    }
+    // From this point on, e is supposed to be positive
+    if(e <= 0.0) {
+      // tolerate tiny negative rounding; fallback to linear approx
+      if(e > -1e-5) {
+        // when x ~ 0, expm1(x) ~ x
+        e = (std::abs(x) > EPS_TINY ? std::abs(x) : EPS_TINY);
+      } 
+      else{
+        Rcpp::Rcout<<"e = "<<e<<std::endl;
+        Rcpp::Rcout<<"x = "<<x<<std::endl;
+        Rcpp::Rcout<<"L = "<<L<<std::endl;
+        Rcpp::Rcout<<"sigma = "<<sigma<<std::endl;
+        Rcpp::Rcout<<"t_const = "<<t_const<<std::endl;
+        Rcpp::Rcout<<"beta = "<<beta<<std::endl;
+        throw std::runtime_error("Error in logZ_BFRY: unexpected nonpositive e");
+      } 
+    }
+    double res = lg + sigma * std::log(beta) + std::log(e);    
+    if(std::isnan(res))
+       throw std::runtime_error("Error in logZ_BFRY: nan in res for sigma > 0");
+    if (!std::isfinite(res)) {
+       throw std::runtime_error("Error in logZ_BFRY: res is infinite");
+    }
+    return res; // return
+}
