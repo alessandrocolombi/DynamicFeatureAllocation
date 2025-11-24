@@ -166,28 +166,28 @@ Lambda0 = lapply(Lambda0, function(x){
   A
 })
 # ---
-# # Set Lambda0 to the true one
-# for(t in 1:6){
-#   Lambda0[[1]][,t] = Lambda[,1]
-# }
-# for(t in 7:14){
-#   Lambda0[[2]][,t] = Lambda[,2]
-# }
-# for(t in 15:23){
-#   Lambda0[[3]][,t] = Lambda[,3]
-# }
+# Set Lambda0 to the true one
+for(t in 1:6){
+  Lambda0[[1]][,t] = Lambda[,1]
+}
+for(t in 7:14){
+  Lambda0[[2]][,t] = Lambda[,2]
+}
+for(t in 15:23){
+  Lambda0[[3]][,t] = Lambda[,3]
+}
 # ---
 # Set Xi0 to the true one
 Xi0 = matrix(0, nrow = H, ncol = Ttot)
 Xi0[1:3,] = Xi
 # ---
-# # Set S0 to the true one
+# Set S0 to the true one
 # load("Brutta_Strue.Rdat")
 # S0 = S_mean
 # ---
 
 
-phi0=1;gamma0=1.5;sigma0=0.15;beta0=0.6;
+phi0=1;gamma0=1;sigma0=0.25;beta0=0.5;
 
 
 init_DTM = set_init_DTM(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0)
@@ -196,9 +196,9 @@ UpdateDitl=TRUE; UpdateS=TRUE;
 UpdateLambda=TRUE;UpdateXi=TRUE; 
 UpdateU=TRUE;
 UpdatePhi=FALSE; UpdateGamma=FALSE;
-UpdateSigma=FALSE; UpdateBeta = TRUE; 
+UpdateSigma=FALSE; UpdateBeta = FALSE; 
 print = TRUE
-JointAdp = TRUE
+JointAdp = FALSE
 param_DTM = set_param_DTM(H,delta, 
                           a_phi,b_phi,a_gamma,b_gamma,a_sigma,b_sigma,a_beta,b_beta, 
                           var_phi,var_gamma,var_sigma,var_beta,
@@ -252,7 +252,7 @@ fields::image.plot(
 l = 1; t = 1
 x = sapply(1:length(fit$Xi), function(i) fit$Xi[[i]][l,t])
 par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
-plot( x, xlab = "Iter.", ylab = paste0("Xi_",l,",",t), type = "l" )
+plot( x, xlab = "Iter.", ylab = paste0("Xi_",l,",",t), type = "l", ylim = c(0,max(x)) )
 
 
 ## S  ----------------------------------------------------------------------
@@ -365,22 +365,22 @@ for(l in 1:H){
 meanRes <- matrix(0, nrow = Ttot, ncol = V)
 for(it in 1:length(fit$Xi)) {
   
-  Xi_it <- fit$Xi[[it]]          # H × Ttot
-  Lambdas_it <- fit$Lambda[[it]] # list of H matrices (each V × Ttot)
+  Xi_it <- fit$Xi[[it]]          # H Ã— Ttot
+  Lambdas_it <- fit$Lambda[[it]] # list of H matrices (each V Ã— Ttot)
   
-  # Build Lambda_arr: H × V × Ttot (fully vectorized using simplify2array)
-  Lambda_arr <- simplify2array(Lambdas_it)  # gives V × Ttot × H
-  Lambda_arr <- aperm(Lambda_arr, c(3,1,2)) # reorder ??? H × V × Ttot
+  # Build Lambda_arr: H Ã— V Ã— Ttot (fully vectorized using simplify2array)
+  Lambda_arr <- simplify2array(Lambdas_it)  # gives V Ã— Ttot Ã— H
+  Lambda_arr <- aperm(Lambda_arr, c(3,1,2)) # reorder â†’ H Ã— V Ã— Ttot
   
-  # (2) Expand Xi: from H×Ttot into H×V×Ttot
+  # (2) Expand Xi: from HÃ—Ttot into HÃ—VÃ—Ttot
   Xi_expanded <- array(Xi_it, dim = c(H, 1, Ttot))
   Xi_expanded <- Xi_expanded[, rep(1, V), , drop = FALSE]   # replicate across V
-  # Now Xi_expanded is H × V × Ttot
+  # Now Xi_expanded is H Ã— V Ã— Ttot
   
   # Elementwise multiply and sum over H
-  # result: V × Ttot after summing over axis=1, then transpose ??? Ttot × V
+  # result: V Ã— Ttot after summing over axis=1, then transpose â†’ Ttot Ã— V
   res_it <- apply(Xi_expanded * Lambda_arr, c(2,3), sum)
-  res_it <- t(res_it)   # now Ttot × V
+  res_it <- t(res_it)   # now Ttot Ã— V
   
   meanRes <- meanRes + res_it
 }
@@ -473,7 +473,7 @@ plot( log(fit$t_sigma_gamma), xlab = "Iter.", ylab = "log(t)", type = "l" )
 
 ## U ------------------------------------------------------------------
 
-U_mean <- Reduce("+", fit$U[it_start:it_end])/length(fit$U[it_start:it_end])
+U_mean <- Reduce("+", fit$U[it_start:it_end])/length(fit$U[it_start:it_end] )
 par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
 image( 1:Ttot, 1:H, 
        t(U_mean),   
@@ -529,7 +529,7 @@ plot( K_tr, xlab = "Iter.", ylab = paste0("K"), type = "l" )
 
 
 ## Unique values for a given iteration ------------------------------------------------------------------
-it = 388
+it = 4500
 Xi_it = fit$Xi[[it]]
 idx_list = lapply(1:H, function(l) find_indices(Xi_it[l,]))
 for(l in 1:H){
@@ -627,19 +627,19 @@ round(sum,2)
 res <- array(0, dim = c(length(fit$Xi), Ttot, V))
 
 for(it in 1:niter) {
-  Xi_it      <- fit$Xi[[it]]         # H × Ttot
-  Lambdas_it <- fit$Lambda[[it]]     # list of H matrices (each V × Ttot)
+  Xi_it      <- fit$Xi[[it]]         # H Ã— Ttot
+  Lambdas_it <- fit$Lambda[[it]]     # list of H matrices (each V Ã— Ttot)
   
-  # Build Lambda_tl: H × V × Ttot
+  # Build Lambda_tl: H Ã— V Ã— Ttot
   # For each l=1..H: extract all columns at once
   Lambda_arr <- array(0, dim = c(H, V, Ttot))
   for(l in 1:H) {
-    Lambda_arr[l, , ] <- Lambdas_it[[l]]  # V × Ttot
+    Lambda_arr[l, , ] <- Lambdas_it[[l]]  # V Ã— Ttot
   }
   
-  # For each t compute Xi_it[,t]??? %*% Lambda_tl (vector length V)
+  # For each t compute Xi_it[,t]áµ€ %*% Lambda_tl (vector length V)
   for(t in 1:Ttot) {
-    Lambda_tl <- Lambda_arr[ , , t]          # H × V
+    Lambda_tl <- Lambda_arr[ , , t]          # H Ã— V
     res[it, t, ] <- as.numeric( t(Xi_it[, t]) %*% Lambda_tl )
   }
 }
