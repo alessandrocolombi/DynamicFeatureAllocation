@@ -118,13 +118,13 @@ std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std:
   const int H = Xi.rows(); // Number of atoms
   const int Ttot = Xi.cols(); // Time windomw
   if(D_itl.size() != H)
-    throw std::runtime_error("Error in sample_Ditl: Xi.rows() != D_itl.size()");
+    throw std::runtime_error("Error in sample_Lambda_itl: Xi.rows() != D_itl.size()");
   if(H <= 0)
-    throw std::runtime_error("Error in sample_Ditl: H must be >= 1 ");
+    throw std::runtime_error("Error in sample_Lambda_itl: H must be >= 1 ");
   if(D_itl[0].cols() != Ttot)
-    throw std::runtime_error("Error in sample_Ditl: Xi.cols() != D_itl[0].cols()");
+    throw std::runtime_error("Error in sample_Lambda_itl: Xi.cols() != D_itl[0].cols()");
   if(delta <= 0)
-    throw std::runtime_error("Error in sample_Ditl: delts must be positive ");
+    throw std::runtime_error("Error in sample_Lambda_itl: delts must be positive ");
 
   const int V = D_itl[0].rows(); // Vocabulary size
 

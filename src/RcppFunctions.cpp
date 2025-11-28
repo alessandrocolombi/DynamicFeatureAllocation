@@ -143,11 +143,13 @@ double log_dmarg_img( const int& K, const MyTraits::VecCol& x, const MyTraits::V
 // Truncated Gibbs Sampling for Topic Modeling
 // --------------------------------------------------------------------------------------------
 // [[Rcpp::export]]
-Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, 
+Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thin,
 															const MatIntCol& D, const int& H, const int& V, const int& Ttot,
 															const Rcpp::List& param_DTM, const Rcpp::List& init_DTM)
 {
-	const int niter_tot = niter + nburn;
+	const int niter_tot = niter*thin + nburn;
+	int nsaved{0};
+
 	//Read param_DTM
 	double delta     = as<double>(param_DTM["delta"]);
 	double a_phi     = as<double>(param_DTM["a_phi"]);
@@ -180,6 +182,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
 	sample::GSL_RNG engine(seed);
 
 	// Read initial values
+	Rcpp::Rcout<<"Start Preprocessing: read initial values ... ";
   MatIntCol Xi0 = init_DTM["Xi0"];
   MatCol S0     = init_DTM["S0"];
   List Lambda0_list = init_DTM["Lambda0"];
@@ -203,24 +206,41 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   double t_sigma_gamma0 = std::exp( 1.0/sigma0 * ( std::log(sigma0*(double)H) - std::log(gamma0) )  );
 
   // Initilize Dl and U
+  Rcpp::Rcout<<" compute U0 and D_itl0 ... ";
   MatCol U0 = sample_Utl(engine, S0, t_sigma_gamma0);
   auto temp = sample_Ditl(engine, Lambda0, Xi0, D);
   std::vector<MatUnsCol> Dl0 = temp.first;
   MatUnsCol N0 = temp.second;
 
-  // Main objects initialization
-  std::vector<MatIntCol> Xi_mcmc(niter_tot+1, MatIntCol::Zero(H,Ttot)); Xi_mcmc[0] = Xi0;
-  std::vector<MatCol> S_mcmc(niter_tot+1, MatCol::Zero(H,Ttot));        S_mcmc[0] = S0;
-  std::vector<MatCol> U_mcmc(niter_tot+1,  MatCol::Zero(H,Ttot));       U_mcmc[0] = U0;
-  std::vector<MatUnsCol> N_mcmc(niter_tot+1,  MatUnsCol::Zero(Ttot,H)); N_mcmc[0] = N0;
-  std::vector<std::vector<MatUnsCol>> Dl_mcmc(niter_tot+1, Dl0);
-  std::vector<std::vector<MatCol>> Lambda_mcmc(niter_tot+1, Lambda0);
+  Rcpp::Rcout<<" main objects definition ... ";
+   // Main objects initialization
+  MatIntCol Xi = Xi0;
+  MatCol S = S0;
+  MatCol U = U0;
+  MatUnsCol N = N0;
+  std::vector<MatUnsCol> Dl = Dl0;
+  std::vector<MatCol> Lambda = Lambda0;
 
-  std::vector<double> phi_mcmc(niter_tot+1,-1.0);   phi_mcmc[0]   = phi0;
-  std::vector<double> gamma_mcmc(niter_tot+1,-1.0); gamma_mcmc[0] = gamma0;
-  std::vector<double> sigma_mcmc(niter_tot+1,-1.0); sigma_mcmc[0] = sigma0;
-  std::vector<double> beta_mcmc(niter_tot+1,-1.0);  beta_mcmc[0] = beta0;
-  std::vector<double> t_sigma_gamma_mcmc(niter_tot+1,-1.0);  t_sigma_gamma_mcmc[0] = t_sigma_gamma0;
+  double phi = phi0;
+  double gamma = gamma0;
+  double sigma = sigma0;
+  double beta = beta0;
+  double t_sigma_gamma = t_sigma_gamma0;
+
+  // Save objects initialization
+  std::vector<MatIntCol> Xi_mcmc(niter, MatIntCol::Zero(H,Ttot));
+  std::vector<MatCol> S_mcmc(niter, MatCol::Zero(H,Ttot));       
+  std::vector<MatCol> U_mcmc(niter,  MatCol::Zero(H,Ttot));      
+  std::vector<MatUnsCol> N_mcmc(niter,  MatUnsCol::Zero(Ttot,H));
+  //std::vector<std::vector<MatUnsCol>> Dl_mcmc(niter, Dl0);
+  std::vector<std::vector<MatCol>> Lambda_mcmc(niter, Lambda0);
+  std::vector<std::vector<MatCol>> Lambda_star_mcmc(niter, std::vector<MatCol>(H));
+
+  std::vector<double> phi_mcmc(niter,-1.0);   
+  std::vector<double> gamma_mcmc(niter,-1.0); 
+  std::vector<double> sigma_mcmc(niter,-1.0); 
+  std::vector<double> beta_mcmc(niter,-1.0);  
+  std::vector<double> t_sigma_gamma_mcmc(niter,-1.0);  
 
   // Usefull quantities for adaptive MCMC
   double s_adp = 2.83;
@@ -228,64 +248,47 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   MatCol Sigma_prop = var_beta * MatCol::Identity(2,2);
   VecCol RunningMean = VecCol::Zero(2);
   RunningMean(0) = gamma_mcmc[0]; RunningMean(1) = sigma_mcmc[0];
+  MatCol gs = MatCol::Zero( niter_tot, 2 );
+  double acc_prob = 0.0;
 
   // Start MCMC loop
-  Rcpp::Rcout<<"Preprocessing finished. Start MCMC ... "<<std::endl;
+  Rcpp::Rcout<<" Preprocessing finished. Start MCMC ... "<<std::endl;
   Progress progress_bar(niter_tot, print); // Initialize progress bar
-  for(int it = 1; it <= niter_tot; it++){
+  for(int it = 0; it < niter_tot; it++){
 
   	// ----------------------------------
   	//Rcpp::Rcout<<"UpdateXi"<<std::endl;
   	if(UpdateXi){
-  		Xi_mcmc[it] = sample_Xi_tl(engine, Xi_mcmc[it-1], S_mcmc[it-1], N_mcmc[it-1],
-  		                       			phi_mcmc[it-1], sigma_mcmc[it-1], beta_mcmc[it-1], 
-  		                       			t_sigma_gamma_mcmc[it-1]);
-  	}
-  	else{
-  		Xi_mcmc[it] = Xi_mcmc[it-1];
+  		Xi = sample_Xi_tl(engine, Xi, S, N, phi, sigma, beta, t_sigma_gamma);
   	}
 		// ----------------------------------
 		//Rcpp::Rcout<<"UpdateS"<<std::endl;
   	if(UpdateS){
-			S_mcmc[it] = sample_Stl(engine, Xi_mcmc[it], U_mcmc[it-1], phi_mcmc[it-1], sigma_mcmc[it-1], beta_mcmc[it-1]);
-  	}
-  	else{
-  		S_mcmc[it] = S_mcmc[it-1];
+			S = sample_Stl(engine, Xi, U, phi, sigma, beta);
   	}
   	// ----------------------------------
   	//Rcpp::Rcout<<"UpdateU"<<std::endl;
   	if(UpdateU){
-			U_mcmc[it] = sample_Utl(engine, S_mcmc[it], t_sigma_gamma_mcmc[it-1]);
-  	}
-  	else{
-  		U_mcmc[it] = U_mcmc[it-1];
+			U = sample_Utl(engine, S, t_sigma_gamma);
   	}
   	// ----------------------------------
   	//Rcpp::Rcout<<"UpdateLambda"<<std::endl;
   	if(UpdateLambda){
-  		Lambda_mcmc[it] = sample_Lambda_itl(engine, Dl_mcmc[it-1], Xi_mcmc[it], delta);
+  		Lambda = sample_Lambda_itl(engine, Dl, Xi, delta);
   	}
-  	else{
-  		Lambda_mcmc[it] = Lambda_mcmc[it-1];
-  	}
-  	// Check Lambda_mcmc[it]
-  	// Is this necessary??
-  	for(int l=0; l < H; l++){
-  		VecCol aux = Lambda_mcmc[it][l].colwise().sum();
-  		if (!((aux.array() - 1.0).abs() <= 1e-10).all()) {
-  		    throw std::runtime_error("Error in Lambda: column values must sum to 1");
-  		}
-  	}
+  			// Check Lambda --> Is this necessary??
+  			//for(int l=0; l < H; l++){
+  				//VecCol aux = Lambda[l].colwise().sum();
+  				//if (!((aux.array() - 1.0).abs() <= 1e-10).all()) {
+  		    		//throw std::runtime_error("Error in Lambda: column values must sum to 1");
+  				//}
+  			//}
   	// ----------------------------------
   	//Rcpp::Rcout<<"UpdateDitl"<<std::endl;
   	if(UpdateDitl){
-  		auto aux = sample_Ditl(engine, Lambda_mcmc[it], Xi_mcmc[it], D);
-			Dl_mcmc[it] = aux.first;
-			N_mcmc[it]  = aux.second;
-  	}
-  	else{
-  		Dl_mcmc[it] = Dl_mcmc[it-1];
-  		N_mcmc[it]  = N_mcmc[it-1];
+  		auto aux = sample_Ditl(engine, Lambda, Xi, D);
+			Dl = aux.first;
+			N  = aux.second;
   	}
   	// ----------------------------------
   	if(UpdatePhi || UpdateBeta || UpdateGamma || UpdateSigma){
@@ -293,64 +296,79 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
 		  	if(it > 100 ){
 		  		Sigma_prop = s_adp*Cadp + 1e-6 * MatCol::Identity(2, 2);
 		  	}
-		  	
-		    //MatCol Sigma_prop = MatCol::Zero(2,2);
-		    //Sigma_prop(0,0) = 4.10576e-05;
-		    //Sigma_prop(1,0) = 3.12258e-06; Sigma_prop(0,1) = 3.12258e-06;
-		    //Sigma_prop(1,1) = 8.33684e-06;
 
 		  	//Rcpp::Rcout<<" +++++++++++++++++++++ "<<std::endl;
 		  	//Rcpp::Rcout<<" it = "<<it<<std::endl;
 		    //Rcpp::Rcout<<"Sigma_prop:"<<std::endl<<Sigma_prop<<std::endl;
 
-  		VecCol aux = sample_hyparams_general( engine, Xi_mcmc[it], S_mcmc[it], 
-		                         								phi_mcmc[it-1],  gamma_mcmc[it-1],  sigma_mcmc[it-1],  beta_mcmc[it-1], t_sigma_gamma_mcmc[it-1],
+  		VecCol aux = sample_hyparams_general( engine, Xi, S, phi, gamma, sigma, beta, t_sigma_gamma,
 		                         								a_phi, b_phi, a_gamma, b_gamma, a_sigma, b_sigma, a_beta, b_beta,  
-		                         								var_beta, Sigma_prop, s_adp, JointAdp, UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta);
+		                         								var_beta, Sigma_prop, s_adp, 
+		                         								JointAdp, UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta);
 
   		//RunningMean(0) = ( (double)(it-1) )/( (double)(it) )*RunningMean(0) + 1.0/( (double)(it) ) * aux[1]; 
   		//RunningMean(1) = ( (double)(it-1) )/( (double)(it) )*RunningMean(1) + 1.0/( (double)(it) ) * aux[2]; 
-  		if(it > 2 && it < 50000 && JointAdp){
-		  	MatCol gs = MatCol::Zero( it+1, 2 );
-		  	for(int jj = 0; jj < it; jj++){
-		  		gs(jj,0) = gamma_mcmc[jj];
-		  		gs(jj,1) = sigma_mcmc[jj];
-		  	}
-		  	gs(it,0) = aux[1]; gs(it,1) = aux[2];
-				Cadp = my_cov( gs );
-  			//VecCol diff = VecCol::Zero(2);
-  			//diff(0) = RunningMean(0) - aux[1];
-  			//diff(1) = RunningMean(1) - aux[2];
-  			//Cadp = ( (double)(it-2) )/( (double)(it-1) )*Cadp + 1.0/( (double)(it) ) * ( diff*diff.transpose() );
-  			s_adp = std::exp( std::log(s_adp) + std::pow(it,-0.7)*( aux[5] - 0.234 ) );
-  			if(s_adp > 10)
-  				s_adp = 1.0;
-  			if(s_adp < 1e-30)
-  				s_adp = 1e-5;
-  			//Rcpp::Rcout<<" ------- "<<std::endl;
-  			//Rcpp::Rcout<<"Cadp:"<<std::endl<<Cadp<<std::endl;
-  			//Rcpp::Rcout<<"RunningMean:"<<std::endl<<RunningMean<<std::endl;
-  			//Rcpp::Rcout<<"s_adp:"<<std::endl<<s_adp<<std::endl;
-  			//Rcpp::Rcout<<" ---------------------------- "<<std::endl;
+
+
+	  	phi   = aux[0];
+	  	gamma = aux[1]; 
+	  	sigma = aux[2]; 
+	  	beta  = aux[3]; 
+	  	t_sigma_gamma = aux[4];
+	  	acc_prob = aux[5];
+  	}
+  	// Update gs matrix and update adaptive hyperparameters
+  	gs(it,0) = gamma; gs(it,1) = sigma;
+  	if(it > 2 && it < 50000 && JointAdp){
+			MatCol gs_it = gs.topRows(it);
+			Cadp = my_cov( gs );
+  		s_adp = std::exp( std::log(s_adp) + std::pow(it,-0.7)*( acc_prob - 0.234 ) );
+  		if(s_adp > 10)
+  			s_adp = 1.0;
+  		if(s_adp < 1e-30)
+  			s_adp = 1e-5;
+  	}
+
+  	// Save current iteration, if needed
+  	if(it>=nburn && (it-nburn)%thin == 0){
+  		if(nsaved >= niter)
+  			throw std::runtime_error("Error, too many saved objects ");
+  		 // Save objects
+  		Xi_mcmc[nsaved] = Xi;
+  		S_mcmc[nsaved]  = S;
+  		U_mcmc[nsaved]  = U;
+  		N_mcmc[nsaved]  = N;
+  		//Dl_mcmc[nsaved] = Dl;
+  		Lambda_mcmc[nsaved] = Lambda;
+
+  		// compute and save Lambda_star
+  		Rcpp::Rcout<<"Salvo Lambda_star_mcmc ... ";
+  		for(int l=0; l < H; l++){
+  		  std::vector<int> idx_born;  // vector with indexes when a trait is born
+  		  std::vector<int> idx_surv;  // vector with indexes when a trait is survived
+  		  std::vector<int> idx_noact; // vector with indexes when a trait is not active
+
+  		  VecIntCol Xi_l = Xi.row(l);
+  		  find_indices(Xi.row(l),idx_born,idx_surv,idx_noact);
+  		  Lambda_star_mcmc[nsaved][l] = MatCol::Zero(idx_born.size(), V );
+  		  for(int kk = 0; kk < idx_born.size(); kk++){
+  		  	Lambda_star_mcmc[nsaved][l].row(kk) = Lambda[l].col(idx_born[kk]);	
+  		  }
+  		  
   		}
-	  				//aux = sample_hyparams( engine, Xi_mcmc[it], S_mcmc[it], 
-	                         					//phi_mcmc[it-1],  gamma_mcmc[it-1],  sigma_mcmc[it-1],  beta_mcmc[it-1], t_sigma_gamma_mcmc[it-1],
-	                         					//a_phi, b_phi, a_gamma, b_gamma, a_sigma, b_sigma, a_beta, b_beta,  
-	                         					//var_phi,  var_gamma,  var_sigma,  var_beta,
-				                        		//UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta);
-	  	phi_mcmc[it]   = aux[0];
-	  	gamma_mcmc[it] = aux[1];
-	  	sigma_mcmc[it] = aux[2];
-	  	beta_mcmc[it]  = aux[3]; 
-	  	t_sigma_gamma_mcmc[it] = aux[4];
-  	}
-  	else{
-  		phi_mcmc[it]   = phi_mcmc[it-1];
-  		gamma_mcmc[it] = gamma_mcmc[it-1];
-  		sigma_mcmc[it] = sigma_mcmc[it-1];
-  		beta_mcmc[it]  = beta_mcmc[it-1]; 
-  		t_sigma_gamma_mcmc[it] = t_sigma_gamma_mcmc[it-1];
-  	}
+			Rcpp::Rcout<<" done! "<<std::endl;
+
+			// Save hyperparameters
+  		phi_mcmc[nsaved] = phi;
+  		gamma_mcmc[nsaved] = gamma;
+  		sigma_mcmc[nsaved] = sigma;
+  		beta_mcmc[nsaved] = beta;
+  		t_sigma_gamma_mcmc[nsaved] = t_sigma_gamma;
+
+  		nsaved++;
+    	//Rcpp::Rcout<<"it = "<<it<<std::endl;
+    }
+
   	//throw std::runtime_error("FERMO IO ");
   	//Check for User Interruption
     try{
@@ -369,8 +387,9 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn,
   	Rcpp::Named("S") = S_mcmc,
   	Rcpp::Named("U") = U_mcmc,
   	Rcpp::Named("N") = N_mcmc,
-  	Rcpp::Named("Dl") = Dl_mcmc,
+  	//Rcpp::Named("Dl") = Dl_mcmc,
   	Rcpp::Named("Lambda") = Lambda_mcmc,
+  	Rcpp::Named("Lambda_star_mcmc") = Lambda_star_mcmc,
   	Rcpp::Named("phi") = phi_mcmc,
   	Rcpp::Named("gamma") = gamma_mcmc,
   	Rcpp::Named("sigma") = sigma_mcmc,

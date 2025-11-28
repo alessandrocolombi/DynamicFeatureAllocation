@@ -5,6 +5,7 @@ source("./../R/Rfunctions.R")
 Rcpp::sourceCpp("./../src/RcppFunctions.cpp")
 mycol = hcl.colors(n = 100, palette = "Greens", rev = TRUE)
 library(fields)
+library(fangs)
 
 
 # Generate data -----------------------------------------------------------
@@ -207,17 +208,18 @@ param_DTM = set_param_DTM(H,delta,
                           print,JointAdp)
 
 # Run ---------------------------------------------------------------------
-niter = 5000
-nburn =    1
+niter = 10
+nburn = 100
+thin  =  10
 
 # sink("log.txt")
-fit = GibbsSampler_DTM(niter,nburn,D,param_DTM,init_DTM)
+fit = GibbsSampler_DTM(niter,nburn,thin,D,param_DTM,init_DTM)
 # sink()
 
 # Diagnosis ---------------------------------------------------------------
 
-it_start = 0 + nburn + 1     # da dove parto + burnin + val iniziale
-it_end   = niter + nburn + 1 # ultima iterazione
+it_start = 1     # da dove parto 
+it_end   = niter # dove finisco
 
 ## Xi ------------------------------------------------------------------
 
@@ -528,13 +530,50 @@ par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
 plot( K_tr, xlab = "Iter.", ylab = paste0("K"), type = "l" )
 
 
+## Active features matrix  ------------------------------------------------------------------
+
+Zmat_list = vector("list", it_end-it_start) 
+for(it in it_start:it_end){
+  idx_list = lapply(1:H, function(l) find_indices(fit$Xi[[it]][l,]))
+  Ktot = 0
+  for(l in 1:H){
+    Ktot = Ktot + length(idx_list[[l]]$idx_born)
+  }
+  
+  Zmat_list[[it-it_start+1]] = matrix(0,nrow = Ttot, ncol = Ktot)
+  counter = 0
+  for(l in 1:H){
+    Num_act_l = length(idx_list[[l]]$idx_born) # how many distinct values
+    if(Num_act_l > 0){
+      for(jj in seq_along(idx_list[[l]]$idx_born) ){
+        counter = counter + 1
+        
+        # Find unique value
+        tj = idx_list[[l]]$idx_born[jj]
+        lambda = fit$Lambda[[it]][[l]][,tj]
+        # Find activity times
+        tj_next = idx_list[[l]]$idx_born[jj+1]
+        if(is.na(tj_next))
+          tj_next = Ttot + 1
+        time_act = c( tj,intersect(tj:tj_next, idx_list[[l]]$idx_surv) )
+        Zmat_list[[it-it_start+1]][time_act,counter] = 1
+      }
+      
+    }
+  }
+}
+Zmat_list = lapply(Zmat_list, function(z) as.matrix(z))
+
+prova = fangs(Zmat_list)
+View(prova)
+est = prova$estimate
+est
 ## Unique values for a given iteration ------------------------------------------------------------------
-it = 4500
+it = 3500
 Xi_it = fit$Xi[[it]]
 idx_list = lapply(1:H, function(l) find_indices(Xi_it[l,]))
 for(l in 1:H){
   Num_act_l = length(idx_list[[l]]$idx_born) # how many distinct values
-  
   if(Num_act_l > 0){
     for(jj in seq_along(idx_list[[l]]$idx_born) ){
       
@@ -545,11 +584,9 @@ for(l in 1:H){
       # Find activity times
       tj_next = idx_list[[l]]$idx_born[jj+1]
       if(is.na(tj_next))
-        tj_next = Inf
+        tj_next = Ttot + 1
       
-      time_act = c(tj,
-                   idx_list[[l]]$idx_surv[which(idx_list[[l]]$idx_surv < tj_next)]
-                   )
+      time_act = c( tj,intersect(tj:tj_next, idx_list[[l]]$idx_surv) )
       active <- Xi_active <- rep(0,Ttot)
       active[ time_act ] = 1
       Xi_active[ time_act ] = fit$Xi[[it]][l,time_act]
@@ -566,16 +603,9 @@ for(l in 1:H){
                xlab = "Time",
                main = "", ylab = "Intensity", ylim = c(0,max(Xi_active)),
                cex.names = 0.5 )
-      # barplot( height = active, 
-      #          names.arg = as.character(1:Ttot),
-      #          las = 1, col = "black", border = NA,
-      #          xlab = "Time",
-      #          main = "", ylab = "", ylim = c(0,1.1),
-      #          cex.names = 0.5 )
     }
 
   }
-
 }
 
 # Brutta ------------------------------------------------------------------
@@ -643,6 +673,22 @@ for(it in 1:niter) {
     res[it, t, ] <- as.numeric( t(Xi_it[, t]) %*% Lambda_tl )
   }
 }
+
+
+
+
+
+fit$Lambda_star_mcmc[[1]]
+
+
+
+
+
+
+
+
+
+
 
 
 

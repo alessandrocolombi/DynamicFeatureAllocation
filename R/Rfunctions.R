@@ -48,7 +48,7 @@ set_init_DTM = function(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0){
 
 # Gibbs sampler -----------------------------------------------------------
 
-GibbsSampler_DTM = function(niter,nburn,data,param_DTM,init_DTM){
+GibbsSampler_DTM = function(niter,nburn,thin,data,param_DTM,init_DTM){
   
   if(!is.matrix(data))
     stop("data must be a matrix of size V x T")
@@ -70,7 +70,7 @@ GibbsSampler_DTM = function(niter,nburn,data,param_DTM,init_DTM){
   if( init_DTM$phi0 <= 0 || init_DTM$gamma0 <= 0 || init_DTM$sigma0 <= 0 || init_DTM$beta0 <= 0 )
     stop("Invalid values of hyperparameters")
   
-  res = GibbsSampler_DTM_c(niter,nburn,data,H,V,Ttot,param_DTM,init_DTM)
+  res = GibbsSampler_DTM_c(niter,nburn,thin,data,H,V,Ttot,param_DTM,init_DTM)
   res
 }
 
