@@ -12,6 +12,7 @@ setwd(wd)
 source("./../../R/Rfunctions.R")
 Rcpp::sourceCpp("./../../src/RcppFunctions.cpp")
 
+library(parallel)
 
 avail_cores = parallel::detectCores(logical = TRUE)
 if(is.na(avail_cores))
@@ -69,7 +70,6 @@ names(params_grid) = c("delta","mu_gamma","var_gamma","mu_beta","var_beta","sigm
 
 # Parallel MCMC runner ----------------------------------------------------
 
-library(parallel)
 
 seed = 22123
 H = 20 # number of atoms
@@ -310,6 +310,9 @@ run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_d
 cl = parallel::makeCluster(n_cores)
 on.exit(parallel::stopCluster(cl), add = TRUE)
 
+cat(sprintf("[%s] START whole script: %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "SpeechDataset_parallel.R"))
+flush.console()
+
 parallel::clusterExport(
   cl,
   varlist = c(
@@ -383,6 +386,9 @@ write.csv(
   file = file.path(output_dir, paste0("parallel_summary_r", r, ".csv")),
   row.names = FALSE
 )
+
+cat(sprintf("[%s] END whole script: %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "SpeechDataset_parallel.R"))
+flush.console()
 
 results_df
 
