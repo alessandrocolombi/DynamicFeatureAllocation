@@ -73,9 +73,9 @@ names(params_grid) = c("delta","mu_gamma","var_gamma","mu_beta","var_beta","sigm
 
 seed = 22123
 H = 20 # number of atoms
-niter = 200
-nburn = 5
-thin  = 2
+niter = 10000
+nburn = 10000
+thin  = 10
 
 # Fixed hyperparameters / MCMC settings
 a_phi = 1; b_phi = 1
