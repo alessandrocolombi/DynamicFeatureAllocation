@@ -19,7 +19,13 @@ log="$LOGDIR/${base}_${ts}.log"           # log file path
 pidfile="$LOGDIR/${base}.pid"             # pid file path
 
 # Run R in a NEW SESSION so Ctrl+C in this terminal won't kill the job
-setsid bash -lc "Rscript '$SCRIPT' > '$log' 2>&1" </dev/null &  # detached job
+setsid bash -lc "{
+  echo \"[$(date '+%F %T')] START $SCRIPT\"
+  Rscript '$SCRIPT'
+  status=\$?
+  echo \"[$(date '+%F %T')] FINISH $SCRIPT (exit=\$status)\"
+  exit \$status
+} > '$log' 2>&1" </dev/null &  # detached job
 pid=$!                                    # PID of the detached session leader
 echo "$pid" > "$pidfile"                  # save PID for status/kill
 
