@@ -4,7 +4,7 @@ wd_unicatt = "C:/Users/alessandro.colombi/"
 wd_g100 = "/g100/home/userexternal/acolombi/"
 wd_bocconi = "/home/colombi/"
 wd_vec = c(wd_pc,wd_unicatt,wd_g100,wd_bocconi)
-choose_wd = wd_vec[1] # <--- modify here
+choose_wd = wd_vec[4] # <--- modify here
 wd = paste0(choose_wd,"DynamicFeatureAllocation/Scripts/SpeechDataset")
 setwd(wd)
 
@@ -12,6 +12,11 @@ setwd(wd)
 source("./../../R/Rfunctions.R")
 Rcpp::sourceCpp("./../../src/RcppFunctions.cpp")
 
+
+avail_cores = parallel::detectCores(logical = TRUE)
+if(is.na(avail_cores))
+  avail_cores = 1L
+n_cores = 33 # <---
 
 # Read data -----------------------------------------------------------
 
@@ -62,7 +67,6 @@ params_grid = expand.grid(
 names(params_grid) = c("delta","mu_gamma","var_gamma","mu_beta","var_beta","sigma0")
 
 
-params_grid = params_grid[c(10,13,19),]
 # Parallel MCMC runner ----------------------------------------------------
 
 library(parallel)
@@ -301,10 +305,7 @@ run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_d
   result
 }
 
-avail_cores = parallel::detectCores(logical = TRUE)
-if(is.na(avail_cores))
-  avail_cores = 1L
-n_cores = 3 # <---
+
 
 cl = parallel::makeCluster(n_cores)
 on.exit(parallel::stopCluster(cl), add = TRUE)
