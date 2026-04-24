@@ -271,5 +271,154 @@ if(save_img)
   dev.off()
 
 
-# Brutta ------------------------------------------------------------------
+# Clinton speech for slides ------------------------------------------------------------------
+
+t = 53 # Clinton 1997
+ft = data[,t]
+ylabs = c(0,10,20,30)
+par(mfrow = c(1,1), mgp=c(2,0.5,0), mar = c(3,3,1,0))
+barplot( height = ft, 
+         names.arg = "", las = 2, col = "darkblue", border = NA,
+         main = "", xlab = "", ylab = "", yaxt = "n",
+         ylim = c(0,30))
+axis( side = 2, at = ylabs, labels = ylabs, las = 1)
+
+
+# Custom division of words in topics
+words <- c(
+  "can","everi","govern","public","may","present","countri","duti",
+  "one","hand","citizen","execut","nation","peopl","unit","sinc",
+  "natur","just","circumst","care","shall","now","constitut","oath",
+  "voic","call","administr","instanc","confid","fellow","offici","act",
+  "presid","state","foreign","honor","form","good","mind","power",
+  "legislatur","justic","ever","congress","spirit","us","principl","right",
+  "let","peac","man","happi","opinion","safeti","other","trust",
+  "interest","among","law","time","limit","reason","place","well",
+  "author","difficulti","success","full","improv","resourc","best","war",
+  "british","without","necessari","great","import","union","made","equal",
+  "forc","parti","commerc","year","whole","upon","first","general",
+  "whose","proper","servic","preserv","exercis","liberti","express","must",
+  "continu","support","institut","hope","experi","look","never","patriot",
+  "charact","grant","howev","protect","revenu","object","within","offic",
+  "day","civil","futur","regard","question","territori","free","case",
+  "provis","exist","minor","god","offens","neither","woe","conflict",
+  "secur","pay","debt","dollar","effort","influenc","subject","feel",
+  "polit","make","need","polici","partisan","communiti","expect","method",
+  "american","rule","countrymen","life","island","faith","purpos","problem",
+  "men","caus","republ","respons","face","task","much","busi",
+  "race","tariff","negro","thing","use","mean","new","live",
+  "industri","thought","action","stand","world","wish","counsel","america",
+  "order","independ","repres","progress","enforc","advanc","system","feder",
+  "help","leadership","measur","valu","restor","disciplin","see","democraci",
+  "moral","million","econom","know","human","freedom","bodi","speak",
+  "learn","way","today","perfect","test","achiev","seem","given",
+  "truth","believ","program","work","strength","seek","side","pledg",
+  "ask","final","chang","old","land","coven","earth","togeth",
+  "home","abroad","dream","weak","go","hero","histori","friend",
+  "renew","idea","challeng","centuri","promis","stori","courag","ideal",
+  "commit","mani","generat","less","prosper","common","requir","back",
+  "across","anoth","uniti","thank"
+)
+
+topic_names <- c("nation", "victory", "war", "economy")
+
+tc <- matrix(
+  0L,
+  nrow = length(words),
+  ncol = length(topic_names),
+  dimnames = list(words, topic_names)
+)
+
+patria <- c(
+  "govern","public","countri","duti","citizen","execut","nation","peopl","unit",
+  "constitut","oath","voic","administr","fellow","offici","act","presid","state",
+  "honor","power","legislatur","justic","congress","us","principl","trust","law",
+  "author","union","general","servic","preserv","liberti","support","institut",
+  "patriot","protect","offic","civil","territori","free","polit","communiti",
+  "american","rule","countrymen","republ","respons","america","order","independ",
+  "repres","feder","leadership","democraci","freedom","bodi","speak","pledg",
+  "land","coven","home","abroad","ideal","commit","generat","common","uniti",
+  "faith","promis"
+)
+
+vittoria <- c(
+  "honor","good","success","full","improv","best","hope","progress","advanc",
+  "help","leadership","restor","strength","perfect","achiev","dream","hero",
+  "renew","challeng","promis","courag","ideal","commit","prosper","trust",
+  "effort","final","happi","valu"
+)
+
+guerra <- c(
+  "foreign","power","peac","safeti","war","british","forc","preserv","support",
+  "protect","civil","offens","conflict","secur","island","world","strength",
+  "side","land","abroad","hero","weak","independ","friend","unit","nation",
+  "territori","order"
+)
+
+economia <- c(
+  "interest","commerc","import","resourc","revenu","pay","debt","dollar","need",
+  "polici","problem","busi","tariff","use","industri","progress","system",
+  "measur","million","econom","program","work","prosper","valu","improv",
+  "success","help","task"
+)
+
+tc[words %in% patria,    "nation"]    <- 1L
+tc[words %in% vittoria,  "victory"]  <- 1L
+tc[words %in% guerra,    "war"]    <- 1L
+tc[words %in% economia,  "economy"]  <- 1L
+
+tc
+
+aaa = apply(tc, 2, function(x) x*ft)
+
+
+ylabs = c(0,10,20,30)
+par(mfrow = c(1,1), mgp=c(2,0.5,0), mar = c(3,3,1,0))
+for(l in 1:4){
+  barplot( height = aaa[,l], 
+           names.arg = "", las = 2, col = "darkblue", border = NA,
+           main = "", xlab = "", ylab = "", yaxt = "n",
+           ylim = c(0,30))
+  axis( side = 2, at = ylabs, labels = ylabs, las = 1)
+}
+
+
+# install.packages("wordcloud")
+# install.packages("RColorBrewer")
+
+library(wordcloud)
+library(RColorBrewer)
+
+topic_names <- colnames(tc)
+
+par(mfrow = c(1, 1), mar = c(0, 0, 0, 0))
+for (j in seq_along(topic_names)) {
+  topic <- topic_names[j]
+  topic_words <- rownames(tc)[tc[, j] == 1]
+  
+  wordcloud(
+    words = topic_words,
+    freq = aaa[which(aaa[,j]>0),j],   # same size, since no frequencies
+    scale = c(2.5, 0.9),
+    min.freq = 1,
+    random.order = FALSE,
+    rot.per = 0.15,
+    colors = "black"
+  )
+  
+  # title(topic, cex.main = 1.4)
+}
+
+
+
+wordcloud(
+  words = words,
+  freq = ft,   # same size, since no frequencies
+  scale = c(2.5, 0.9),
+  min.freq = 1,
+  random.order = FALSE,
+  rot.per = 0.15,
+  colors = "black"
+)
+
 

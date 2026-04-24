@@ -122,3 +122,48 @@ set_par_gamma = function(media, var)
   out = c(a,b)
   return(out)
 }
+
+
+build_topic_matrices <- function(Xi_it, Ttot) {
+  # Xi_it: H x Ttot
+  paths <- apply(Xi_it, 1, find_indices)
+  
+  K_now <- sum(vapply(paths, function(p) length(p$idx_born), integer(1)))
+  
+  Activity <- matrix(0L, nrow = Ttot, ncol = K_now)
+  Xi_star  <- matrix(0,  nrow = K_now, ncol = Ttot)
+  
+  topic_id <- 0
+  
+  for (l in seq_along(paths)) {
+    p <- paths[[l]]
+    
+    if (length(p$idx_born) > 0) {
+      for (j in seq_along(p$idx_born)) {
+        topic_id <- topic_id + 1
+        
+        tj <- p$idx_born[j]
+        tj_next <- p$idx_born[j + 1]
+        
+        if (is.na(tj_next)) {
+          tj_next <- Ttot + 1
+        }
+        
+        time_act <- c(tj, intersect(tj:tj_next, p$idx_surv))
+        
+        Activity[time_act, topic_id] <- 1L
+        Xi_star[topic_id, time_act] <- Xi_it[l, time_act]
+      }
+    }
+  }
+  
+  list(
+    Activity = Activity,   # Ttot x K_now
+    Xi_star  = Xi_star    # K_now x Ttot
+    # paths    = paths,
+    # K        = K_now
+  )
+}
+## Examples: (a) single iteration: build_topic_matrices(fit$Xi[[it]], Ttot)
+## Examples: (a) all iteration: lapply(1:length(fit$Xi), function(it) { build_topic_matrices(fit$Xi[[it]], Ttot) })
+

@@ -272,9 +272,9 @@ MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, 
   //Rcpp::Rcout<<"Dentro!"<<std::endl;
 
   sample::rpoisson rpoisson; // define callable object to generate random samples from a gamma distribution
-  sample::runif runif; // define callable object to generate random samples from a Uniform distribution
+  sample::runif runif;       // define callable object to generate random samples from a Uniform distribution
 
-  const int H = S.rows(); // Number of atoms
+  const int H = S.rows();    // Number of atoms
   const int Ttot = S.cols(); // Time window
   if(H <= 0)
     throw std::runtime_error("Error in sample_Xi_tl: H must be >= 1 ");
@@ -343,9 +343,20 @@ MatIntCol sample_Xi_tl(sample::GSL_RNG const & engine, const MatIntCol& Xi_old, 
           //Rcpp::Rcout<<"log_R_tl 2 = "<<log_R_tl<<std::endl;
           log_R_tl += logNormConst(xi_tl) - logNormConst(xi_prime);
           //Rcpp::Rcout<<"log_R_tl 3 = "<<log_R_tl<<std::endl;
+          if( std::isnan(log_R_tl) ){
+            Rcpp::Rcout<<" N_tl(t,l) = "<<N_tl(t,l)<<"; calculation 1 = "<<(double)diff_xi * ( std::log( S(l,t+1) ) + std::log(b_phi) - b_phi )<<std::endl;
+            Rcpp::Rcout<<" log_norm_const1 = "<<logNormConst(xi_tl)<<"; log_norm_const1 = "<<logNormConst(xi_prime)<<std::endl;
+            Rcpp::Rcout<<" b = "<<b<<", t_sigma_gamma = "<<t_sigma_gamma<<""<<std::endl;
+            Rcpp::Rcout<<" sigma = "<<sigma<<", diff_log = "<<diff_log<<""<<std::endl;
+            Rcpp::Rcout<<" lgamma(1-sigma) = "<<std::lgamma(1.0 - sigma)<<"; log(sigma) = "<<std::log(sigma) <<"; log expm1 = "<< std::log( gsl_expm1( -sigma*diff_log ) )<<std::endl;
+            throw std::runtime_error("Error in sample_Xi_tl: log_norm_const");
+          }
         }
         if( std::isnan(log_R_tl) ){
+          Rcpp::Rcout<<" b_phi = "<<b_phi<<", b_phi_t = "<<b_phi_t<<" , diff_log = "<<diff_log<<" , N_tl(t,l) = "<<N_tl(t,l)<<std::endl;
+          Rcpp::Rcout<<" b = "<<b<<", t_sigma_gamma = "<<t_sigma_gamma<<""<<std::endl;
           Rcpp::Rcout<<"("<<l<<","<<t<<") : "<<xi_tl<<" vs "<<xi_prime<<", S(l,t) = "<<S(l,t)<<std::endl;
+          
           throw std::runtime_error("Error in sample_Xi_tl: get nan in acceptance probability");
         }
         pacc = std::exp( std::min(0.0,log_R_tl) ); // MH acc. prob

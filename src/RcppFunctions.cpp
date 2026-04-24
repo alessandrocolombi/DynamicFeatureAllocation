@@ -149,6 +149,32 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
 {
 	const int niter_tot = niter*thin + nburn;
 	int nsaved{0};
+	auto check_log_gap = [](const double& phi, const double& beta, const double& t_sigma_gamma, const int& it){
+		const double left = beta + phi;
+		const double right = left + t_sigma_gamma;
+		if(left <= 0.0 || right <= 0.0)
+			throw std::runtime_error("Error in GibbsSampler_DTM_c: beta+phi and beta+phi+t_sigma_gamma must be strictly positive");
+
+		const double diff_log = std::log(left) - std::log(right);
+		if(!std::isfinite(diff_log))
+			throw std::runtime_error("Error in GibbsSampler_DTM_c: log(beta+phi) - log(beta+phi+t_sigma_gamma) is not finite");
+		if(diff_log > 0.0){
+			Rcpp::Rcout<<"it = "<<it<<std::endl;
+			Rcpp::Rcout<<"phi = "<<phi<<std::endl;
+			Rcpp::Rcout<<"beta = "<<beta<<std::endl;
+			Rcpp::Rcout<<"t_sigma_gamma = "<<t_sigma_gamma<<std::endl;
+			Rcpp::Rcout<<"log(beta+phi) - log(beta+phi+t_sigma_gamma) = "<<diff_log<<std::endl;
+			throw std::runtime_error("Error in GibbsSampler_DTM_c: log(beta+phi) - log(beta+phi+t_sigma_gamma) must be strictly negative");
+		}
+		if(diff_log == 0.0){
+			Rcpp::Rcout<<"it = "<<it<<std::endl;
+			Rcpp::Rcout<<"phi = "<<phi<<std::endl;
+			Rcpp::Rcout<<"beta = "<<beta<<std::endl;
+			Rcpp::Rcout<<"t_sigma_gamma = "<<t_sigma_gamma<<std::endl;
+			Rcpp::Rcout<<"log(beta+phi) - log(beta+phi+t_sigma_gamma) = "<<diff_log<<std::endl;
+			throw std::runtime_error("Error in GibbsSampler_DTM_c: log(beta+phi) - log(beta+phi+t_sigma_gamma) is numerically undetectable");
+		}
+	};
 
 	//Read param_DTM
 	double delta     = as<double>(param_DTM["delta"]);
@@ -226,6 +252,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
   double sigma = sigma0;
   double beta = beta0;
   double t_sigma_gamma = t_sigma_gamma0;
+	check_log_gap(phi, beta, t_sigma_gamma, -1);
 
   // Save objects initialization
   std::vector<MatIntCol> Xi_mcmc(niter, MatIntCol::Zero(H,Ttot));
@@ -233,7 +260,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
   std::vector<MatCol> U_mcmc(niter,  MatCol::Zero(H,Ttot));      
   std::vector<MatUnsCol> N_mcmc(niter,  MatUnsCol::Zero(Ttot,H));
   //std::vector<std::vector<MatUnsCol>> Dl_mcmc(niter, Dl0);
-  std::vector<std::vector<MatCol>> Lambda_mcmc(niter, Lambda0);
+  //std::vector<std::vector<MatCol>> Lambda_mcmc(niter, Lambda0);
   std::vector<std::vector<MatCol>> Lambda_star_mcmc(niter, std::vector<MatCol>(H));
 
   std::vector<double> phi_mcmc(niter,-1.0);   
@@ -255,6 +282,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
   Rcpp::Rcout<<" Preprocessing finished. Start MCMC ... "<<std::endl;
   Progress progress_bar(niter_tot, print); // Initialize progress bar
   for(int it = 0; it < niter_tot; it++){
+		check_log_gap(phi, beta, t_sigma_gamma, it);
 
   	// ----------------------------------
   	//Rcpp::Rcout<<"UpdateXi"<<std::endl;
@@ -317,6 +345,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
 	  	t_sigma_gamma = aux[4];
 	  	acc_prob = aux[5];
   	}
+		check_log_gap(phi, beta, t_sigma_gamma, it);
   	// Update gs matrix and update adaptive hyperparameters
   	gs(it,0) = gamma; gs(it,1) = sigma;
   	if(it > 2 && it < 50000 && JointAdp){
@@ -339,10 +368,9 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
   		U_mcmc[nsaved]  = U;
   		N_mcmc[nsaved]  = N;
   		//Dl_mcmc[nsaved] = Dl;
-  		Lambda_mcmc[nsaved] = Lambda;
+  		//Lambda_mcmc[nsaved] = Lambda;
 
   		// compute and save Lambda_star
-  		Rcpp::Rcout<<"Salvo Lambda_star_mcmc ... ";
   		for(int l=0; l < H; l++){
   		  std::vector<int> idx_born;  // vector with indexes when a trait is born
   		  std::vector<int> idx_surv;  // vector with indexes when a trait is survived
@@ -356,7 +384,6 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
   		  }
   		  
   		}
-			Rcpp::Rcout<<" done! "<<std::endl;
 
 			// Save hyperparameters
   		phi_mcmc[nsaved] = phi;
@@ -388,7 +415,7 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
   	Rcpp::Named("U") = U_mcmc,
   	Rcpp::Named("N") = N_mcmc,
   	//Rcpp::Named("Dl") = Dl_mcmc,
-  	Rcpp::Named("Lambda") = Lambda_mcmc,
+  	//Rcpp::Named("Lambda") = Lambda_mcmc,
   	Rcpp::Named("Lambda_star_mcmc") = Lambda_star_mcmc,
   	Rcpp::Named("phi") = phi_mcmc,
   	Rcpp::Named("gamma") = gamma_mcmc,
