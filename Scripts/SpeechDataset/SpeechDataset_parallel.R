@@ -77,6 +77,9 @@ thin  = 10
 a_phi = 1; b_phi = 1
 a_sigma = 1; b_sigma = 1
 prop_var_phi = 0.01
+
+phi0 = 1
+
 UpdateDitl = TRUE; UpdateS = TRUE
 UpdateLambda = TRUE; UpdateXi = TRUE
 UpdateU = TRUE
