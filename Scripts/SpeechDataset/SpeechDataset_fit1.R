@@ -93,7 +93,7 @@ Lambda0 = lapply(Lambda0, function(x){
 
 
 
-phi0=1;gamma0=1;sigma0=0.5;beta0=1;
+phi0=1;gamma0=0.01;sigma0=0.5;beta0=1;
 
 
 init_DTM = set_init_DTM(Xi0,Lambda0,S0,phi0,gamma0,sigma0,beta0)
