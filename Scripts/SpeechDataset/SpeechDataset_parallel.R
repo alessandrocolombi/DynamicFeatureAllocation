@@ -48,12 +48,12 @@ Ttot = ncol(data)
 
 # Set options list -------------------------------------------------------------
 
-delta_all     = c(1e-3,1e-2)  # Dirichlet parameter
-mu_gamma_all  = c(0.1,10) 
-var_gamma_all = c(1,10)
-mu_beta_all   = c(0.1,10)
-var_beta_all  = c(1,10)
-sigma0_all    = c(0.25,0.5,0.75)
+delta_all     = c(1e-4)  # Dirichlet parameter
+mu_gamma_all  = c(1e-4,1e-3,1e-2) 
+var_gamma_all = c(0.001)
+mu_beta_all   = c(1e-4,1e-3,1e-2)
+var_beta_all  = c(0.001)
+sigma0_all    = c(0.1,0.25,0.5,0.75,0.9)
 
 params_grid = expand.grid(
   delta = delta_all,
@@ -127,27 +127,6 @@ make_config_tag = function(cfg, cfg_id, r) {
 }
 
 plot_traceplot_num_topics = function(fit, H, Ttot, main_prefix = "") {
-  Kt_tr = sapply(fit$Xi, function(Xi_it) {
-    apply(Xi_it, 2, function(x) length(which(x > 0)))
-  })
-  Kt_tr = t(Kt_tr)
-  
-  topics_per_page = 9
-  topic_chunks = split(seq_len(Ttot), ceiling(seq_len(Ttot) / topics_per_page))
-  
-  for(chunk in topic_chunks) {
-    par(mfrow = c(3,3), mar = c(3,3,2,1), mgp = c(2,0.5,0), bty = "l")
-    for(t in chunk) {
-      plot(Kt_tr[,t], xlab = "Iter.", ylab = paste0("K", t), type = "l",
-           main = paste0(main_prefix, "Time ", t))
-    }
-    if(length(chunk) < topics_per_page) {
-      for(dummy in seq_len(topics_per_page - length(chunk))) {
-        plot.new()
-      }
-    }
-  }
-  
   K_tr = sapply(fit$Xi, function(Xi_it) {
     idx_list = lapply(seq_len(H), function(l) find_indices(Xi_it[l,]))
     sum(vapply(idx_list, function(x) length(x$idx_born), integer(1)))
@@ -156,6 +135,14 @@ plot_traceplot_num_topics = function(fit, H, Ttot, main_prefix = "") {
   par(mfrow = c(1,1), mar = c(3,3,2,1), mgp = c(2,0.5,0), bty = "l")
   plot(K_tr, xlab = "Iter.", ylab = "K", type = "l",
        main = paste0(main_prefix, "Total number of distinct topics"))
+  
+  par(mfrow = c(1,3), mar = c(3,3,2,1), mgp = c(2,0.5,0), bty = "l")
+  plot(fit$gamma, xlab = "Iter.", ylab = "gamma", type = "l",
+       main = paste0(main_prefix, "gamma"))
+  plot(fit$beta, xlab = "Iter.", ylab = "beta", type = "l",
+       main = paste0(main_prefix, "beta"))
+  plot(log(fit$t_sigma_gamma), xlab = "Iter.", ylab = "log(t)", type = "l",
+       main = paste0(main_prefix, "log(t)"))
 }
 
 run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_dir, seed,
