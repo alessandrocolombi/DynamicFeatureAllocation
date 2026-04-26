@@ -1,0 +1,4 @@
+MCMC failed for cfg034_r10_delta_1em04_muGamma_1em04_varGamma_1em03_muBeta_1em02_varBeta_1em03_sigma0_7p5em01
+r = 10
+seed = 22157
+Error in Lambda0: column values must sum to 1
