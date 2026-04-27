@@ -61,8 +61,11 @@ sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_it
       //old code
       for(int l = 0; l < H; l++) {
         zeta_it(l) = Lambda_itl[l](i,t) * Xi(l,t);
-        if(std::isnan(zeta_it(l)))
+        if(std::isnan(zeta_it(l))){
+          Rcpp::Rcout<<"Lambda_itl["<<l<<"]("<<i<<","<<t<<") = "<<Lambda_itl[l](i,t)<<std::endl;
+          //Rcpp::Rcout<<"Xi("<<l<<","<<t<<") = "<<Xi(l,t)<<std::endl;
           throw std::runtime_error("Error in sample_Ditl, get a nan in zeta_it ");
+        }
       }
       double sum_w = zeta_it.sum(); // compute the sum
       if(sum_w > 0) { // if 0, do nothing. otherwise ..
@@ -114,6 +117,7 @@ sample_Ditl(sample::GSL_RNG const & engine, const std::vector<MatCol>& Lambda_it
 std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std::vector<MatUnsCol>& D_itl, const MatIntCol& Xi, const double& delta)
 {
   sample::rgamma rgamma; // define callable object to generate random samples from a gamma distribution
+  sample::sample_index rsample; // define callable object to generate random index in a given range (0,M-1)
 
   const int H = Xi.rows(); // Number of atoms
   const int Ttot = Xi.cols(); // Time windomw
@@ -155,6 +159,9 @@ std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std:
           //Rcpp::Rcout<<"i = "<<i<<"; shape = "<<shape<<std::endl;
           temp(i) = rgamma(engine, shape, 1.0);
         }
+        if(temp.sum() <= 0){
+          Rcpp::Rcout<<"born; temp.sum() = "<<temp.sum()<<std::endl;
+        }
         temp /= temp.sum(); // normalize to get a Dirichlet distribution
         Lambda_itl[l].col(t) = temp ; // save new value from posterior
         // Rcpp::Rcout<<std::fixed<<std::setprecision(2)<<"Post.; Lambda_itl["<<l<<"].col("<<t<<") = "<<std::endl<<Lambda_itl[l].col(t).transpose()<<std::endl;
@@ -171,6 +178,12 @@ std::vector<MatCol> sample_Lambda_itl(sample::GSL_RNG const & engine, const std:
         VecCol temp{VecCol::Zero(V)}; 
         for(int i = 0; i < V; i++){
           temp(i) = rgamma(engine, delta, 1.0); // no update from the data
+        }
+        if(temp.sum() <= 0){
+          //Rcpp::Rcout<<"non active; temp.sum() = "<<temp.sum()<<std::endl;
+          temp( rsample(engine, temp.size()) ) = 1.0;
+          //Rcpp::Rcout<<"modification; temp.sum() = "<<temp.sum()<<std::endl;
+          //throw std::runtime_error("fermo io ");
         }
         temp /= temp.sum(); // normalize to get a Dirichlet distribution
         Lambda_itl[l].col(t) = temp ; // save draw from the prior

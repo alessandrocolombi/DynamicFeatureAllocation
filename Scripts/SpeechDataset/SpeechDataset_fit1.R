@@ -70,7 +70,7 @@ fields::image.plot(
 seed = 22123
 
 H = 20 # number of atoms
-delta = 0.001 # Dirichlet parameter
+delta = 1e-4 # Dirichlet parameter
 
 # Hyperparameters
 a_phi=1;b_phi=1;

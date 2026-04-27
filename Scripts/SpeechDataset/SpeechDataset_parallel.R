@@ -17,7 +17,7 @@ library(parallel)
 avail_cores = parallel::detectCores(logical = TRUE)
 if(is.na(avail_cores))
   avail_cores = 1L
-n_cores = 33 # <---
+n_cores = 36 # <---
 
 # Read data -----------------------------------------------------------
 
@@ -48,10 +48,10 @@ Ttot = ncol(data)
 
 # Set options list -------------------------------------------------------------
 
-delta_all   = c(1e-4,1e-3,1e-2)  # Dirichlet parameter
-beta0_all   = c(1e-4,1e-3,1e-2,1e-1,1)
-gamma0_all  = c(1e-4,1e-3,1e-2,1e-1,1)
-sigma0_all  = c(0.1,0.25,0.5,0.75,0.9)
+delta_all   = c(1e-4,1)  
+beta0_all   = c(1e-2,1e-1,1)
+gamma0_all  = c(1e-2,1e-1)
+sigma0_all  = c(0.1,0.5,0.9)
 
 params_grid = expand.grid(
   delta = delta_all,
@@ -63,7 +63,7 @@ params_grid = expand.grid(
 )
 names(params_grid) = c("delta","beta0","gamma0","sigma0")
 
-
+cat("\n ---- Number of configurations to run: ",nrow(params_grid)," ---- \n")
 # Parallel MCMC runner ----------------------------------------------------
 
 

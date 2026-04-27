@@ -305,12 +305,12 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
   		Lambda = sample_Lambda_itl(engine, Dl, Xi, delta);
   	}
   			// Check Lambda --> Is this necessary??
-  			//for(int l=0; l < H; l++){
-  				//VecCol aux = Lambda[l].colwise().sum();
-  				//if (!((aux.array() - 1.0).abs() <= 1e-10).all()) {
-  		    		//throw std::runtime_error("Error in Lambda: column values must sum to 1");
-  				//}
-  			//}
+  			for(int l=0; l < H; l++){
+  				VecCol aux = Lambda[l].colwise().sum();
+  				if (!((aux.array() - 1.0).abs() <= 1e-10).all()) {
+  		    		throw std::runtime_error("Error in Lambda: column values must sum to 1");
+  				}
+  			}
   	// ----------------------------------
   	//Rcpp::Rcout<<"UpdateDitl"<<std::endl;
   	if(UpdateDitl){

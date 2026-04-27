@@ -1,4 +1,0 @@
-MCMC failed for cfg172_r10_delta_1em04_beta0_1em02_gamma0_1em03_sigma0_5em01
-r = 10
-seed = 22295
-Error in sample_Ditl, get a nan in zeta_it 
