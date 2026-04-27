@@ -17,7 +17,7 @@ library(parallel)
 avail_cores = parallel::detectCores(logical = TRUE)
 if(is.na(avail_cores))
   avail_cores = 1L
-n_cores = 36 # <---
+n_cores = 33 # <---
 
 # Read data -----------------------------------------------------------
 
@@ -61,17 +61,22 @@ params_grid = expand.grid(
   KEEP.OUT.ATTRS = FALSE,
   stringsAsFactors = FALSE
 )
-names(params_grid) = c("delta","beta0","gamma0","sigma0")
+
+params_grid = matrix(0,nrow = , ncol = 4)
+params_grid[1,] = c(1,0.1,0.1,0.1)
+params_grid[2,] = c(1e-3,1,0.1,0.1)
+params_grid[3,] = c(1e-2,1,1e-2,0.9)
 
 cat("\n ---- Number of configurations to run: ",nrow(params_grid)," ---- \n")
+names(params_grid) = c("delta","beta0","gamma0","sigma0")
 # Parallel MCMC runner ----------------------------------------------------
 
-
+save_all_chain = TRUE
 seed = 22123
 H = 20 # number of atoms
 niter = 10000
 nburn = 10000
-thin  = 10
+thin  = 20
 
 # Fixed hyperparameters / MCMC settings
 a_phi = 1; b_phi = 1
@@ -93,6 +98,9 @@ if(!dir.exists(output_dir))
 log_dir = file.path(output_dir, "log")
 if(!dir.exists(log_dir))
   dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+save_dir = file.path(wd, "save")
+if(!dir.exists(save_dir))
+  dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
 
 project_dir = normalizePath(file.path(wd, "..", ".."), winslash = "/", mustWork = TRUE)
 rfunctions_path = file.path(project_dir, "R", "Rfunctions.R")
@@ -128,7 +136,7 @@ plot_traceplot_num_topics = function(fit, H, Ttot, main_prefix = "") {
        main = paste0(main_prefix, "Total number of distinct topics"))
 }
 
-run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_dir, seed,
+run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_dir, save_dir, save_all_chain, seed,
                               niter, nburn, thin,
                               a_phi, b_phi, a_sigma, b_sigma,
                               prop_var_phi,
@@ -145,6 +153,7 @@ run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_d
   tag = make_config_tag(cfg, cfg_id, r)
   pdf_file = file.path(output_dir, paste0(tag, ".pdf"))
   log_file = file.path(log_dir, paste0(tag, ".log"))
+  fit_file = file.path(save_dir, paste0(tag, ".rds"))
   chain_seed = seed + cfg_id
   log_open = FALSE
   pdf_open = FALSE
@@ -191,15 +200,19 @@ run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_d
     
     fit = GibbsSampler_DTM(niter, nburn, thin, data, param_DTM, init_DTM)
     
-    grDevices::pdf(pdf_file, width = 12, height = 8)
-    pdf_open = TRUE
-    
-    plot_traceplot_num_topics(
-      fit = fit,
-      H = H,
-      Ttot = Ttot,
-      main_prefix = paste0(tag, " | ")
-    )
+    if(save_all_chain){
+      saveRDS(fit, file = fit_file)
+    } else{
+      grDevices::pdf(pdf_file, width = 12, height = 8)
+      pdf_open = TRUE
+      
+      plot_traceplot_num_topics(
+        fit = fit,
+        H = H,
+        Ttot = Ttot,
+        main_prefix = paste0(tag, " | ")
+      )
+    }
     
     rm(fit, Xi0, S0, Lambda0, init_DTM, param_DTM)
     gc(verbose = FALSE)
@@ -212,34 +225,37 @@ run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_d
       config_id = cfg_id,
       tag = tag,
       pdf_file = pdf_file,
+      fit_file = fit_file,
       log_file = log_file,
       status = "success",
       error_message = NA_character_
     )
   }, error = function(e) {
-    try({
-      grDevices::pdf(pdf_file, width = 11, height = 8.5)
-      par(mar = c(1,1,1,1))
-      plot.new()
-      text(
-        0.02, 0.98,
-        labels = paste(
-          "MCMC failed",
-          paste0("tag: ", tag),
-          paste0("r: ", r),
-          paste0("delta: ", cfg$delta),
-          paste0("beta0: ", cfg$beta0),
-          paste0("gamma0: ", cfg$gamma0),
-          paste0("sigma0: ", cfg$sigma0),
-          paste0("seed: ", chain_seed),
-          "",
-          paste(strwrap(conditionMessage(e), width = 100), collapse = "\n"),
-          sep = "\n"
-        ),
-        adj = c(0,1)
-      )
-      dev.off()
-    }, silent = TRUE)
+    if(!save_all_chain){
+      try({
+        grDevices::pdf(pdf_file, width = 11, height = 8.5)
+        par(mar = c(1,1,1,1))
+        plot.new()
+        text(
+          0.02, 0.98,
+          labels = paste(
+            "MCMC failed",
+            paste0("tag: ", tag),
+            paste0("r: ", r),
+            paste0("delta: ", cfg$delta),
+            paste0("beta0: ", cfg$beta0),
+            paste0("gamma0: ", cfg$gamma0),
+            paste0("sigma0: ", cfg$sigma0),
+            paste0("seed: ", chain_seed),
+            "",
+            paste(strwrap(conditionMessage(e), width = 100), collapse = "\n"),
+            sep = "\n"
+          ),
+          adj = c(0,1)
+        )
+        dev.off()
+      }, silent = TRUE)
+    }
     
     writeLines(
       c(
@@ -255,6 +271,7 @@ run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_d
       config_id = cfg_id,
       tag = tag,
       pdf_file = pdf_file,
+      fit_file = fit_file,
       log_file = log_file,
       status = "failed",
       error_message = conditionMessage(e)
@@ -276,6 +293,7 @@ parallel::clusterExport(
   cl,
   varlist = c(
     "data", "V", "Ttot", "H", "r", "output_dir", "log_dir", "seed",
+    "save_dir", "save_all_chain",
     "niter", "nburn", "thin",
     "a_phi", "b_phi", "a_sigma", "b_sigma",
     "prop_var_phi", "phi0",
@@ -307,6 +325,8 @@ results = parallel::parLapplyLB(cl, seq_len(nrow(params_grid)), function(cfg_id)
     r = r,
     output_dir = output_dir,
     log_dir = log_dir,
+    save_dir = save_dir,
+    save_all_chain = save_all_chain,
     seed = seed,
     niter = niter,
     nburn = nburn,
