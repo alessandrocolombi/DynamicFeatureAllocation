@@ -62,7 +62,7 @@ params_grid = expand.grid(
   stringsAsFactors = FALSE
 )
 
-params_grid = matrix(0,nrow = , ncol = 4)
+params_grid = matrix(0,nrow = 3, ncol = 4)
 params_grid[1,] = c(1,0.1,0.1,0.1)
 params_grid[2,] = c(1e-3,1,0.1,0.1)
 params_grid[3,] = c(1e-2,1,1e-2,0.9)
