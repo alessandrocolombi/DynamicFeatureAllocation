@@ -1,0 +1,4 @@
+"fit_file","summary_file","size_mb","less_than_100mb"
+"cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01.rds","cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01_summary.rds",15.9,TRUE
+"cfg002_r10_delta_1em03_beta0_1e00_gamma0_1em01_sigma0_1em01.rds","cfg002_r10_delta_1em03_beta0_1e00_gamma0_1em01_sigma0_1em01_summary.rds",15.02,TRUE
+"cfg003_r10_delta_1em02_beta0_1e00_gamma0_1em02_sigma0_9em01.rds","cfg003_r10_delta_1em02_beta0_1e00_gamma0_1em02_sigma0_9em01_summary.rds",15.41,TRUE
