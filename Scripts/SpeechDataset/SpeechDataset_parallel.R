@@ -17,7 +17,7 @@ library(parallel)
 avail_cores = parallel::detectCores(logical = TRUE)
 if(is.na(avail_cores))
   avail_cores = 1L
-n_cores = 33 # <---
+n_cores = 4 # <---
 
 # Read data -----------------------------------------------------------
 
@@ -66,9 +66,10 @@ params_grid = matrix(0,nrow = 3, ncol = 4)
 params_grid[1,] = c(1,0.1,0.1,0.1)
 params_grid[2,] = c(1e-3,1,0.1,0.1)
 params_grid[3,] = c(1e-2,1,1e-2,0.9)
+params_grid = as.data.frame(params_grid, stringsAsFactors = FALSE)
+colnames(params_grid) = c("delta","beta0","gamma0","sigma0")
 
 cat("\n ---- Number of configurations to run: ",nrow(params_grid)," ---- \n")
-names(params_grid) = c("delta","beta0","gamma0","sigma0")
 # Parallel MCMC runner ----------------------------------------------------
 
 save_all_chain = TRUE
@@ -144,11 +145,14 @@ run_single_config = function(cfg, cfg_id, data, V, Ttot, H, r, output_dir, log_d
                               UpdateDitl, UpdateS, UpdateLambda, UpdateXi, UpdateU,
                               UpdatePhi, UpdateGamma, UpdateSigma, UpdateBeta,
                               print, JointAdp) {
-  cfg = as.list(cfg)
+  cfg = as.list(as.data.frame(cfg, stringsAsFactors = FALSE))
   cfg$delta = as.numeric(cfg$delta)
   cfg$beta0 = as.numeric(cfg$beta0)
   cfg$gamma0 = as.numeric(cfg$gamma0)
   cfg$sigma0 = as.numeric(cfg$sigma0)
+  if(any(!is.finite(c(cfg$delta, cfg$beta0, cfg$gamma0, cfg$sigma0)))){
+    stop("Invalid configuration: delta, beta0, gamma0 and sigma0 must all be finite scalars")
+  }
   
   tag = make_config_tag(cfg, cfg_id, r)
   pdf_file = file.path(output_dir, paste0(tag, ".pdf"))
