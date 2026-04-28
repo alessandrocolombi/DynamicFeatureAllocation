@@ -5,4 +5,5 @@
 *.dll
 .ini
 *.Rdat
-*.epsScripts/SpeechDataset/save/*.rds
+*.eps
+Scripts/SpeechDataset/save/
