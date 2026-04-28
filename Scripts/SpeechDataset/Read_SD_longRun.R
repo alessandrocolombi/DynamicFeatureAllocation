@@ -119,6 +119,13 @@ summarize_fit = function(fit, H, Ttot, niter_expected = NULL) {
   K_it = sapply(Lambda_fit, ncol)
   topic_objs = lapply(seq_len(n_saved), function(it) build_topic_matrices(fit$Xi[[it]], Ttot))
   
+  V = if(length(Lambda_fit) > 0) nrow(Lambda_fit[[1]]) else NA_integer_
+  meanRes = matrix(0, nrow = Ttot, ncol = V)
+  for(it in it_start:it_end) {
+    meanRes = meanRes + t(Lambda_fit[[it]] %*% topic_objs[[it]]$Xi_star)
+  }
+  meanRes = meanRes / length(it_start:it_end)
+  
   Xi_mean = Reduce("+", fit$Xi[it_start:it_end]) / length(fit$Xi[it_start:it_end])
   S_mean = Reduce("+", fit$S[it_start:it_end]) / length(fit$S[it_start:it_end])
   N_mean = Reduce("+", fit$N[it_start:it_end]) / length(fit$N[it_start:it_end])
@@ -133,11 +140,13 @@ summarize_fit = function(fit, H, Ttot, niter_expected = NULL) {
       n_saved = n_saved,
       H = H,
       Ttot = Ttot,
-      V = if(length(Lambda_fit) > 0) nrow(Lambda_fit[[1]]) else NA_integer_,
+      V = V,
       niter_expected = niter_expected
     ),
+    Lambda_fit = Lambda_fit,
     topic_objs = topic_objs,
     K_it = K_it,
+    meanRes = meanRes,
     Xi_mean = Xi_mean,
     S_mean = S_mean,
     N_mean = N_mean,
