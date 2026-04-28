@@ -143,7 +143,7 @@ summarize_fit = function(fit, H, Ttot, niter_expected = NULL) {
       V = V,
       niter_expected = niter_expected
     ),
-    Lambda_fit = Lambda_fit,
+    # Lambda_fit = Lambda_fit,
     topic_objs = topic_objs,
     K_it = K_it,
     meanRes = meanRes,
