@@ -11,6 +11,7 @@ setwd(wd)
 # Functions ---------------------------------------------------------------
 source("./../../R/Rfunctions.R")
 Rcpp::sourceCpp("./../../src/RcppFunctions.cpp")
+library(fangs)
 
 left_order <- function(Z) {
   if (!is.matrix(Z)) Z <- as.matrix(Z)
@@ -35,8 +36,34 @@ left_order <- function(Z) {
   
   return(Z[,ord])
 }
+left_order_pair <- function(Zstar, Xi_star) {
+  if (!is.matrix(Zstar)) Zstar <- as.matrix(Zstar)
+  if (!is.matrix(Xi_star)) Xi_star <- as.matrix(Xi_star)
+  
+  if (!all(Zstar %in% c(0, 1)))
+    stop("Zstar must be a binary matrix (0/1).")
+  
+  if (!all(dim(Zstar) == dim(Xi_star)))
+    stop("Zstar and Xi_star must have the same dimensions.")
+  
+  # Binary signature of each column of Zstar
+  col_signature <- apply(Zstar, 2, function(col) {
+    paste(col, collapse = "")
+  })
+  
+  # Lexicographic decreasing order
+  ord <- order(col_signature, decreasing = TRUE)
+  
+  list(
+    Zord = Zstar[, ord, drop = FALSE],
+    Xiord = Xi_star[, ord, drop = FALSE],
+    ord = ord
+  )
+}
+
 
 mycol = hcl.colors(n = 100, palette = "Greens", rev = TRUE)
+tau_xi_plot = 0.5
 # Read data -----------------------------------------------------------
 
 seed = 132332
@@ -104,6 +131,9 @@ if(length(fit_files) == 0)
   stop("No fit .rds files found in: ", save_dir)
 
 cat("\nFound ", length(fit_files), " fit object(s) to summarize.\n", sep = "")
+
+
+# Plot loop ---------------------------------------------------------------
 
 i = 1
 for(i in seq_along(fit_files)) {
@@ -244,7 +274,6 @@ for(i in seq_along(fit_files)) {
   Adj_mat_list = lapply(Ximat_list, function(x) x%*%t(x) )
   
   Wpsm <- Reduce(`+`, Adj_mat_list)/length(Adj_mat_list)
-  Wpsm <- sqrt(Wpsm)
   
   par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
   image( 1:Ttot, 1:Ttot, 
@@ -272,6 +301,49 @@ for(i in seq_along(fit_files)) {
     legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
   )
   
+  ## Wpsm as correlation ------------------------------------------------------------------
+  Cor_mat_list = lapply(Ximat_list, function(x){
+    x_bar = 1/ncol(x) * t(rep(1, ncol(x)) %*% t(x))
+    Cov_it = 1/ncol(x) * (x %*% t(x)) - (x_bar %*% t(x_bar))
+    
+    sd_it = sqrt(diag(Cov_it))
+    denom = sd_it %o% sd_it
+    Cor_it = Cov_it
+    
+    idx = denom > 0
+    Cor_it[idx] = Cov_it[idx] / denom[idx]
+    Cor_it[!idx] = 0
+    diag(Cor_it) = ifelse(sd_it > 0, 1, 0)
+    
+    Cor_it
+  })
+  Cor <- Reduce(`+`, Cor_mat_list)/length(Cor_mat_list)
+  
+  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+  image( 1:Ttot, 1:Ttot, 
+         Cor,   
+         col = mycol,    
+         xlab = "Time", 
+         ylab = "Time",
+         main = "Cor",
+         axes = FALSE )
+  axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7 )
+  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7)
+  box()
+  fields::image.plot(
+    1:Ttot, 1:Ttot, Cor,
+    col = mycol,
+    legend.only = TRUE,
+    horizontal = FALSE,
+    legend.width = 1.2,            # controls legend thickness
+    legend.shrink = 0.8,           # smaller legend
+    legend.mar = 8.5,                # margin from image
+    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+  )
   ## Unweighted pairwise similarity matrix ------------------------------------------------------------------
   
   Adj_bin_mat_list = lapply(Zmat_list, function(z) z%*%t(z) )
@@ -304,14 +376,7 @@ for(i in seq_along(fit_files)) {
   )
   ## Mean values --------------------------------------------------------------------
   
-  meanRes <- matrix(0, nrow = Ttot, ncol = V)
-  for(it in it_start:it_end ) {
-    
-    meanRes = meanRes + t(Lambda_fit[[it]]%*%topic_objs[[it]]$Xi_star)
-    
-  }
-  meanRes <- meanRes / niter
-  dim(meanRes)
+  meanRes <- fit_summary$meanRes
   
   par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
   image( 1:Ttot, 1:V, 
@@ -394,6 +459,251 @@ A[which(A < 2)] = -1
 A
 
 
+# Brutta pair ordering ----------------------------------------------------
+
+
+t = 10000
+tau_xi_plot = 0.5
+for(t in seq(niter-20,niter,by=1) ){
+  Zstar = fit_summary$topic_objs[[t]]$Activity
+  Xistar = t(fit_summary$topic_objs[[t]]$Xi_star)
+  Z_Xi_ord = left_order_pair(Zstar,Xistar)
+  Ktot_it = ncol(Z_Xi_ord$Zord)
+  layout(matrix(c(1, 2, 3), nrow = 1), widths = c(1, 1, 0.18))
+  par(mar = c(3.5,3.5,2,2), mgp=c(2,0.5,0))
+  image( 1:Ktot_it, 1:Ttot,
+         t(Z_Xi_ord$Zord),   
+         col = c(mycol),    
+         xlab = "Topics", 
+         ylab = "Time",
+         main = paste0("Zord - iter. = ",t),
+         axes = FALSE )
+  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7 )
+  axis(1, at = seq(1, Ktot_it, length.out = min(Ktot_it, 10)), 
+       labels = round(seq(1, Ktot_it, length.out = min(Ktot_it, 10))),
+       cex.axis = 0.7)
+  box()
+  plot_mat = Z_Xi_ord$Xiord
+  max_plot_mat = max(plot_mat, na.rm = TRUE)
+  par(mar = c(3.5,3.5,2,2), mgp=c(2,0.5,0))
+  if(max_plot_mat <= tau_xi_plot)
+    stop("Error, max_plot_mat can not be larger than tau_xi_plot")
+  
+  eps_break = .Machine$double.eps
+  green_breaks = seq(tau_xi_plot, max_plot_mat + eps_break, length.out = length(mycol) + 1)
+  breaks_xi = c(0, tau_xi_plot, green_breaks[-1])
+  image( 1:Ktot_it, 1:Ttot,
+           t(plot_mat),
+           col = c("blue", mycol),
+           breaks = breaks_xi,
+           xlab = "Topics",
+           ylab = "Time",
+           main = paste0("Xiord - iter. = ",t),
+           axes = FALSE )
+  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7 )
+  axis(1, at = seq(1, Ktot_it, length.out = min(Ktot_it, 10)), 
+       labels = round(seq(1, Ktot_it, length.out = min(Ktot_it, 10))),
+       cex.axis = 0.7)
+  box()
+}
+
+
+# President over time topics --------------------------------------------------------
+
+# t = 60 # Trump
+t = 57
+Kmax = max(K_tr)
+Xi_Pres = lapply(fit_summary$topic_objs, function(x) x$Xi_star[, t])
+Xi_Pres = lapply(Xi_Pres, function(x) {
+  x = sort(x, decreasing = TRUE)
+  if(length(x) < Kmax)
+    x = c(x, rep(0, Kmax - length(x)))
+  x
+})
+Xi_Pres_mat = do.call(rbind, Xi_Pres)
+
+soglia = 0.1 * nrow(Xi_Pres_mat)
+sel_col = which( colSums(Xi_Pres_mat) > soglia )
+Xi_plot = Xi_Pres_mat[,sel_col]
+
+par(mfrow = c(1,1), mar = c(3.5,3.5,2,2), mgp = c(2,0.5,0))
+matplot( Xi_plot,type = "l", 
+         lty = 1, lwd = 1,
+         xlab = "Iteration", ylab = paste0("Xi[, ", t, "]"),
+         main = "Ordered topic intensities" )
+
+# Xi mass ordering --------------------------------------------------------
+
+compromise_order_pair <- function(Zstar, Xi_star) {
+  if (!is.matrix(Zstar)) Zstar <- as.matrix(Zstar)
+  if (!is.matrix(Xi_star)) Xi_star <- as.matrix(Xi_star)
+  
+  if (!all(dim(Zstar) == dim(Xi_star)))
+    stop("Zstar and Xi_star must have the same dimensions.")
+  
+  birth_time <- apply(Zstar, 2, function(col) {
+    idx <- which(col > 0)
+    if(length(idx) == 0) Inf else idx[1]
+  })
+  xi_mass <- colSums(Xi_star)
+  xi_keys <- as.data.frame(-t(Xi_star))
+  ord <- do.call(order, c(list(birth_time, -xi_mass), xi_keys))
+  
+  list(
+    Zord = Zstar[, ord, drop = FALSE],
+    Xiord = Xi_star[, ord, drop = FALSE],
+    birth = birth_time[ord],
+    mass = xi_mass[ord],
+    ord = ord
+  )
+}
+pad_ncol_right <- function(X, ncol_target) {
+  if (!is.matrix(X)) X <- as.matrix(X)
+  
+  if (ncol(X) > ncol_target)
+    stop("ncol_target must be at least ncol(X).")
+  
+  if (ncol(X) == ncol_target)
+    return(X)
+  
+  cbind(X, matrix(0, nrow = nrow(X), ncol = ncol_target - ncol(X)))
+}
+tail_mass_matrix <- function(X) {
+  if (!is.matrix(X)) X <- as.matrix(X)
+  
+  apply(X, 2, function(col) rev(cumsum(rev(col))))
+}
+
+max_K_tr = max(K_tr)
+Xiord_comp_list = lapply(fit_summary$topic_objs, function(obj) {
+  Zstar = obj$Activity
+  Xistar = t(obj$Xi_star)
+  compromise_order_pair(Zstar, Xistar)$Xiord
+})
+Xiord_comp_pad_list = lapply(Xiord_comp_list, function(Xiord_it) {
+  pad_ncol_right(Xiord_it, max_K_tr)
+})
+Xi_star_mean = Reduce(`+`, Xiord_comp_pad_list) / length(Xiord_comp_pad_list)
+CumXi_comp_pad_list = lapply(Xiord_comp_pad_list, tail_mass_matrix)
+CumXi_star_mean = Reduce(`+`, CumXi_comp_pad_list) / length(CumXi_comp_pad_list)
+
+soglia = 0
+sel_colums = which(colSums(Xi_star_mean) > soglia )
+plot_mat = Xi_star_mean[,sel_colums]
+
+max_plot_mat = max(plot_mat, na.rm = TRUE)
+par(mfrow = c(1,1), mar = c(3.5,3.5,2,2), mgp = c(2,0.5,0))
+green_breaks = seq(0, max_plot_mat, length.out = length(mycol)+1)
+breaks_xi = green_breaks
+image(1:ncol(plot_mat), 1:Ttot,
+      t(plot_mat),
+      col = mycol,
+      breaks = breaks_xi,
+      xlab = "Topics",
+      ylab = "Time",
+      main = "Xi_star_mean compromise-ord",
+      axes = FALSE)
+axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)),
+     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+     cex.axis = 0.7)
+axis(1, at = seq(1, ncol(plot_mat), length.out = min(ncol(plot_mat), 10)),
+     labels = round(seq(1, ncol(plot_mat), length.out = min(ncol(plot_mat), 10))),
+     cex.axis = 0.7)
+box()
+
+sel_colums = which(colSums(CumXi_star_mean) > soglia )
+plot_mat = CumXi_star_mean[,sel_colums]
+
+max_plot_mat = max(plot_mat, na.rm = TRUE)
+par(mfrow = c(1,1), mar = c(3.5,3.5,2,2), mgp = c(2,0.5,0))
+green_breaks = seq(0, max_plot_mat, length.out = length(mycol)+1)
+breaks_xi = green_breaks
+image(1:ncol(plot_mat), 1:Ttot,
+      t(plot_mat),
+      col = mycol,
+      breaks = breaks_xi,
+      xlab = "Topics",
+      ylab = "Time",
+      main = "CumXi_star_mean compromise-ord",
+      axes = FALSE)
+axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)),
+     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+     cex.axis = 0.7)
+axis(1, at = seq(1, ncol(plot_mat), length.out = min(ncol(plot_mat), 10)),
+     labels = round(seq(1, ncol(plot_mat), length.out = min(ncol(plot_mat), 10))),
+     cex.axis = 0.7)
+box()
+
+
+
+
+
+for(t in seq(niter-10,niter,by=1) ){
+  Zstar = fit_summary$topic_objs[[t]]$Activity
+  Xistar = t(fit_summary$topic_objs[[t]]$Xi_star)
+  Z_Xi_comp = compromise_order_pair(Zstar, Xistar)
+  Ktot_it = ncol(Z_Xi_comp$Zord)
+  
+  layout(matrix(c(1, 2), nrow = 1), widths = c(1, 1))
+  par(mar = c(3.5,3.5,2,2), mgp = c(2,0.5,0))
+  image(1:Ktot_it, 1:Ttot,
+        t(Z_Xi_comp$Zord),
+        col = c(mycol),
+        xlab = "Topics",
+        ylab = "Time",
+        main = paste0("Z compromise-ord - iter. = ", t),
+        axes = FALSE)
+  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)),
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7)
+  axis(1, at = seq(1, Ktot_it, length.out = min(Ktot_it, 10)),
+       labels = round(seq(1, Ktot_it, length.out = min(Ktot_it, 10))),
+       cex.axis = 0.7)
+  box()
+  
+  plot_mat = Z_Xi_comp$Xiord
+  max_plot_mat = max(plot_mat, na.rm = TRUE)
+  par(mar = c(3.5,3.5,2,2), mgp = c(2,0.5,0))
+  if(max_plot_mat <= tau_xi_plot) {
+    image(1:Ktot_it, 1:Ttot,
+          t(plot_mat),
+          col = "blue",
+          zlim = c(0, 1),
+          xlab = "Topics",
+          ylab = "Time",
+          main = paste0("Xi compromise-ord - iter. = ", t),
+          axes = FALSE)
+  } else {
+    eps_break = .Machine$double.eps
+    green_breaks = seq(tau_xi_plot, max_plot_mat + eps_break, length.out = length(mycol) + 1)
+    breaks_xi = c(0, tau_xi_plot, green_breaks[-1])
+    image(1:Ktot_it, 1:Ttot,
+          t(plot_mat),
+          col = c("blue", mycol),
+          breaks = breaks_xi,
+          xlab = "Topics",
+          ylab = "Time",
+          main = paste0("Xi compromise-ord - iter. = ", t),
+          axes = FALSE)
+  }
+  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)),
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7)
+  axis(1, at = seq(1, Ktot_it, length.out = min(Ktot_it, 10)),
+       labels = round(seq(1, Ktot_it, length.out = min(Ktot_it, 10))),
+       cex.axis = 0.7)
+  box()
+}
+
+
+
+# Read full object --------------------------------------------------------
+fit = readRDS("save/cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01.rds")
+View(fit)
 
 
 
