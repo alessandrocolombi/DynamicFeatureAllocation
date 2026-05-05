@@ -351,44 +351,47 @@ template$Xi_mean = sweep(template$Xi_mean, 2, count_scale, `*`)
 template$CumXi_mean = sweep(template$CumXi_mean, 2, count_scale, `*`)
 
 ## Plot -------------------------------------------------------------
-soglia = 0.5
-plot_mat = template$Xi_mean #template$Xi_mean
-sel_colums = which(colSums(plot_mat) > soglia )
-plot_mat = plot_mat[,sel_colums]
-
-max_plot_mat = max(plot_mat, na.rm = TRUE)
-K_plot = ncol(plot_mat)
-
-par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
-green_breaks = seq(soglia, max_plot_mat + eps_break, length.out = length(mycol) + 1)
-breaks_xi = c(0, soglia, green_breaks[-1])
-image( 1:K_plot, 1:Ttot,
-       t(plot_mat),
-       col = c("blue", mycol),
-       breaks = breaks_xi,
-       xlab = "Topics",
-       ylab = "Time",
-       main = "Xi_aligned_mean",
-       axes = FALSE )
-axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
-     labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
-     cex.axis = 0.7 )
-axis(1, at = seq(1, K_plot, length.out = min(K_plot, 10)), 
-     labels = round(seq(1, K_plot, length.out = min(K_plot, 10))),
-     cex.axis = 0.7)
-box()
-fields::image.plot(
-  1:K_plot, 1:Ttot,
-  t(plot_mat),
-  col = c("blue", mycol),
-  breaks = breaks_xi,
-  legend.only = TRUE,
-  horizontal = FALSE,
-  legend.width = 1.2,            # controls legend thickness
-  legend.shrink = 0.8,           # smaller legend
-  legend.mar = 8.5,                # margin from image
-  legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
-)
+if(FALSE){
+  soglia = 0.5
+  plot_mat = template$Xi_mean #template$Xi_mean
+  sel_colums = which(colSums(plot_mat) > soglia )
+  plot_mat = plot_mat[,sel_colums]
+  
+  max_plot_mat = max(plot_mat, na.rm = TRUE)
+  K_plot = ncol(plot_mat)
+  
+  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+  green_breaks = seq(soglia, max_plot_mat + eps_break, length.out = length(mycol) + 1)
+  breaks_xi = c(0, soglia, green_breaks[-1])
+  image( 1:K_plot, 1:Ttot,
+         t(plot_mat),
+         col = c("blue", mycol),
+         breaks = breaks_xi,
+         xlab = "Topics",
+         ylab = "Time",
+         main = "Xi_aligned_mean",
+         axes = FALSE )
+  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7 )
+  axis(1, at = seq(1, K_plot, length.out = min(K_plot, 10)), 
+       labels = round(seq(1, K_plot, length.out = min(K_plot, 10))),
+       cex.axis = 0.7)
+  box()
+  fields::image.plot(
+    1:K_plot, 1:Ttot,
+    t(plot_mat),
+    col = c("blue", mycol),
+    breaks = breaks_xi,
+    legend.only = TRUE,
+    horizontal = FALSE,
+    legend.width = 1.2,            # controls legend thickness
+    legend.shrink = 0.8,           # smaller legend
+    legend.mar = 8.5,                # margin from image
+    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+  )
+  
+}
 
 
 # Save result -------------------------------------------------------------
