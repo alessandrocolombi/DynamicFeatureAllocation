@@ -48,12 +48,32 @@ if(is.null(summary_file_name)) {
 cat("\nLoading summary object:\n", basename(summary_file), "\n", sep = "")
 fit_summary = readRDS(summary_file)
 
+# Load the full-chain fit as well, because Lambda_star is only available
+# in the raw MCMC output.
+save_dir = file.path(wd, "save")
+if(!dir.exists(save_dir))
+  stop("save folder does not exist: ", save_dir)
+
+fit_file = file.path(
+  save_dir,
+  sub("_summary\\.rds$", ".rds", basename(summary_file))
+)
+if(!file.exists(fit_file))
+  stop("Matching raw fit file not found: ", fit_file)
+
+cat("Loading full-chain fit object:\n", basename(fit_file), "\n", sep = "")
+fit_all = readRDS(fit_file)
+Lambda_fit = lapply(fit_all$Lambda_star_mcmc, function(Lam_it) t(do.call(rbind, Lam_it)))
+
 # Basic checks ------------------------------------------------------------
 if(is.null(fit_summary$topic_objs) || length(fit_summary$topic_objs) == 0)
   stop("fit_summary$topic_objs is missing or empty.")
+if(length(Lambda_fit) != length(fit_summary$topic_objs))
+  stop("Lambda_fit and topic_objs have different lengths.")
 
 Ttot = nrow(fit_summary$topic_objs[[1]]$Activity)
 Niter = length(fit_summary$topic_objs)
+V = nrow(Lambda_fit[[1]])
 
 # Matching weights / threshold -------------------------------------------
 #
@@ -71,15 +91,22 @@ match_threshold = 1000
 
 # Helpers -----------------------------------------------------------------
 
-# Extract Ttot x K matrices from one saved topic object.
-get_topic_pair = function(topic_obj) {
+# Extract the paired objects for one iteration:
+#   - Zstar      : Ttot x K
+#   - Xistar     : Ttot x K
+#   - Lambda_it  : V x K
+#
+# Column k of Lambda_it is paired with column k of Xistar and Zstar.
+get_topic_triplet = function(topic_obj, Lambda_it) {
   Zstar = topic_obj$Activity
   Xistar = t(topic_obj$Xi_star)
   
   if(!all(dim(Zstar) == dim(Xistar)))
     stop("Zstar and Xistar do not have matching dimensions.")
+  if(ncol(Lambda_it) != ncol(Zstar))
+    stop("Lambda_it does not have the same number of topic columns as Zstar/Xistar.")
   
-  list(Zstar = Zstar, Xistar = Xistar)
+  list(Zstar = Zstar, Xistar = Xistar, Lambda = Lambda_it)
 }
 
 # Normalize Xi so the Xi distance reflects SHAPE more than scale.
@@ -130,14 +157,16 @@ topic_distance = function(template_z_prob, template_xi_mean, z_new, xi_new,
 #   - running mean of Z
 #   - running mean of Xi
 #   - running mean of tail-mass Xi
+#   - running mean of Lambda (conditional on being matched/present)
 #   - match count
 #   - first / last iteration where the column was seen
-append_template_column = function(template, z_new, xi_new, it) {
+append_template_column = function(template, z_new, xi_new, lambda_new, it) {
   cum_xi_new = rev(cumsum(rev(xi_new)))
   
   template$Z_mean = cbind(template$Z_mean, z_new)
   template$Xi_mean = cbind(template$Xi_mean, xi_new)
   template$CumXi_mean = cbind(template$CumXi_mean, cum_xi_new)
+  template$Lambda_mean = cbind(template$Lambda_mean, lambda_new)
   template$count = c(template$count, 1L)
   template$first_seen = c(template$first_seen, it)
   template$last_seen = c(template$last_seen, it)
@@ -146,7 +175,7 @@ append_template_column = function(template, z_new, xi_new, it) {
 }
 
 # Update an existing template column via running averages.
-update_template_column = function(template, k, z_new, xi_new, it) {
+update_template_column = function(template, k, z_new, xi_new, lambda_new, it) {
   m = template$count[k]
   cum_xi_new = rev(cumsum(rev(xi_new)))
   
@@ -156,6 +185,8 @@ update_template_column = function(template, k, z_new, xi_new, it) {
     (m * template$Xi_mean[, k] + xi_new) / (m + 1)
   template$CumXi_mean[, k] =
     (m * template$CumXi_mean[, k] + cum_xi_new) / (m + 1)
+  template$Lambda_mean[, k] =
+    (m * template$Lambda_mean[, k] + lambda_new) / (m + 1)
   
   template$count[k] = m + 1L
   template$last_seen[k] = it
@@ -164,9 +195,10 @@ update_template_column = function(template, k, z_new, xi_new, it) {
 }
 
 # Initialize the online template from iteration 1.
-initialize_template = function(topic_pair) {
-  Z0 = topic_pair$Zstar
-  Xi0 = topic_pair$Xistar
+initialize_template = function(topic_triplet) {
+  Z0 = topic_triplet$Zstar
+  Xi0 = topic_triplet$Xistar
+  Lambda0 = topic_triplet$Lambda
   K0 = ncol(Z0)
   
   CumXi0 = apply(Xi0, 2, function(col) rev(cumsum(rev(col))))
@@ -177,6 +209,7 @@ initialize_template = function(topic_pair) {
     Z_mean = Z0,
     Xi_mean = Xi0,
     CumXi_mean = CumXi0,
+    Lambda_mean = Lambda0,
     count = rep(1L, K0),
     first_seen = rep(1L, K0),
     last_seen = rep(1L, K0)
@@ -186,11 +219,12 @@ initialize_template = function(topic_pair) {
 # One online update step:
 # process one iteration column-by-column, matching each new column to the
 # current template if the best distance is small enough; otherwise append.
-online_update = function(template, topic_pair, it,
+online_update = function(template, topic_triplet, it,
                          w_birth, w_death, w_xi,
                          match_threshold) {
-  Zstar = topic_pair$Zstar
-  Xistar = topic_pair$Xistar
+  Zstar = topic_triplet$Zstar
+  Xistar = topic_triplet$Xistar
+  Lambda_it = topic_triplet$Lambda
   K_new = ncol(Zstar)
   
   matched_template = rep(FALSE, length(template$count))
@@ -225,6 +259,7 @@ online_update = function(template, topic_pair, it,
         template = template,
         z_new = Zstar[, j],
         xi_new = Xistar[, j],
+        lambda_new = Lambda_it[, j],
         it = it
       )
       assignment[j] = length(template$count)
@@ -236,6 +271,7 @@ online_update = function(template, topic_pair, it,
         k = best_k,
         z_new = Zstar[, j],
         xi_new = Xistar[, j],
+        lambda_new = Lambda_it[, j],
         it = it
       )
       assignment[j] = best_k
@@ -258,8 +294,8 @@ Lsaved_iter = Niter - it_start
 
 # We start from iteration 1, use it as the initial template, then process
 # all remaining iterations one by one.
-topic_pair_1 = get_topic_pair(fit_summary$topic_objs[[it_start]])
-template = initialize_template(topic_pair_1)
+topic_triplet_1 = get_topic_triplet(fit_summary$topic_objs[[it_start]], Lambda_fit[[it_start]])
+template = initialize_template(topic_triplet_1)
 
 n_saved = 1
 history = vector("list", Lsaved_iter)
@@ -280,11 +316,11 @@ for(it in (it_start+1):Niter) {
     cat("\n","Ncols = ",Ncols,"\n")
   }
   
-  topic_pair_it = get_topic_pair(fit_summary$topic_objs[[it]])
+  topic_triplet_it = get_topic_triplet(fit_summary$topic_objs[[it]], Lambda_fit[[it]])
   
   step_out = online_update(
     template = template,
-    topic_pair = topic_pair_it,
+    topic_triplet = topic_triplet_it,
     it = it,
     w_birth = w_birth,
     w_death = w_death,
@@ -322,6 +358,7 @@ ord_final = order(-template$count, template_birth, -template_mass)
 template$Z_mean = template$Z_mean[, ord_final, drop = FALSE]
 template$Xi_mean = template$Xi_mean[, ord_final, drop = FALSE]
 template$CumXi_mean = template$CumXi_mean[, ord_final, drop = FALSE]
+template$Lambda_mean = template$Lambda_mean[, ord_final, drop = FALSE]
 template$count = template$count[ord_final]
 template$first_seen = template$first_seen[ord_final]
 template$last_seen = template$last_seen[ord_final]
@@ -344,6 +381,7 @@ template$last_seen = template$last_seen[ord_final]
 template$Z_mean_conditional = template$Z_mean
 template$Xi_mean_conditional = template$Xi_mean
 template$CumXi_mean_conditional = template$CumXi_mean
+template$Lambda_mean_conditional = template$Lambda_mean
 
 count_scale = template$count / Lsaved_iter
 template$Z_mean = sweep(template$Z_mean, 2, count_scale, `*`)
@@ -352,8 +390,10 @@ template$CumXi_mean = sweep(template$CumXi_mean, 2, count_scale, `*`)
 
 ## Plot -------------------------------------------------------------
 if(FALSE){
-  soglia = 0.5
-  plot_mat = template$Xi_mean #template$Xi_mean
+  res = readRDS("save_summary/cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01_online_matching.rds")
+  
+  soglia = 25
+  plot_mat = res$template$Xi_mean #template$Xi_mean
   sel_colums = which(colSums(plot_mat) > soglia )
   plot_mat = plot_mat[,sel_colums]
   
@@ -412,9 +452,11 @@ out = list(
   Z_online_mean = template$Z_mean,
   Xi_online_mean = template$Xi_mean,
   CumXi_online_mean = template$CumXi_mean,
+  Lambda_online_mean = template$Lambda_mean_conditional,
   Z_online_mean_conditional = template$Z_mean_conditional,
   Xi_online_mean_conditional = template$Xi_mean_conditional,
-  CumXi_online_mean_conditional = template$CumXi_mean_conditional
+  CumXi_online_mean_conditional = template$CumXi_mean_conditional,
+  Lambda_online_mean_conditional = template$Lambda_mean_conditional
 )
 
 out_file = file.path(

@@ -144,9 +144,9 @@ for(i in seq_along(fit_files)) {
     sub("\\.rds$", "_summary.rds", fit_name)
   )
   
-  cat("\n[", i, "/", length(fit_files), "] Reading ", fit_name, " ...\n", sep = "")
-  fit_summary = readRDS(fit_file)
-
+  # cat("\n[", i, "/", length(fit_files), "] Reading ", fit_name, " ...\n", sep = "")
+  fit_summary = readRDS(paste0("save_summary/cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01_summary.rds"))
+  fit_all = readRDS(paste0("save/cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01.rds"))
   ## Plot Xi mean ------------------------------------------------------------
   Xi_mean = fit_summary$Xi_mean
   par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
@@ -403,9 +403,28 @@ for(i in seq_along(fit_files)) {
     legend.mar = 8.5,                # margin from image
     legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
   )
-  
+  ## Lambda values --------------------------------------------------------------------
+  it = 950
+  ymax_topic = max(Lambda_fit[[it]])
+  ymax_xi = max( fit_summary$topic_objs[[it]]$Xi_star )
+  for(l in 1:nrow(fit_summary$topic_objs[[it]]$Xi_star)){
+    par(mfrow = c(1,2), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+    barplot( height = Lambda_fit[[it]][,l], 
+             names.arg = as.character(1:V),
+             las = 1, col = "darkred", border = NA,
+             xlab = "Word",
+             main = paste0("Atom: ",l), ylab = "Prob.", ylim = c(0,ymax_topic),
+             cex.names = 0.5 )
+    barplot( height = fit_summary$topic_objs[[it]]$Xi_star[l,], 
+             names.arg = as.character(1:Ttot),
+             las = 1, col = "darkgreen", border = NA,
+             xlab = "Time",
+             main = "", ylab = "Intensity", ylim = c(0,ymax_xi),
+             cex.names = 0.5 )
+  }
   
   ## End: start reading new file
+  
 }
 
 
