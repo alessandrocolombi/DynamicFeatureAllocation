@@ -4,7 +4,7 @@ wd_unicatt = "C:/Users/alessandro.colombi/"
 wd_g100 = "/g100/home/userexternal/acolombi/"
 wd_bocconi = "/home/colombi/"
 wd_vec = c(wd_pc, wd_unicatt, wd_g100, wd_bocconi)
-choose_wd = wd_vec[1] # <--- modify here if needed
+choose_wd = wd_vec[4] # <--- modify here if needed
 wd = paste0(choose_wd, "DynamicFeatureAllocation/Scripts/SpeechDataset")
 setwd(wd)
 
