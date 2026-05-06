@@ -16,7 +16,8 @@ setwd(wd)
 # Plot options -------------------------------------------------------------
 eps_break = .Machine$double.eps
 mycol = hcl.colors(n = 100, palette = "Greens", rev = TRUE)
-
+save_img = FALSE
+width = 12; height = 6
 # Input / output ----------------------------------------------------------
 #
 # This script reads one compact summary object from `save_summary/`,
@@ -289,7 +290,7 @@ online_update = function(template, topic_triplet, it,
 
 # Online matching ---------------------------------------------------------
  
-it_start = Niter/2
+it_start = 1 #Niter/2
 Lsaved_iter = Niter - it_start
 
 # We start from iteration 1, use it as the initial template, then process
@@ -388,52 +389,6 @@ template$Z_mean = sweep(template$Z_mean, 2, count_scale, `*`)
 template$Xi_mean = sweep(template$Xi_mean, 2, count_scale, `*`)
 template$CumXi_mean = sweep(template$CumXi_mean, 2, count_scale, `*`)
 
-## Plot -------------------------------------------------------------
-if(FALSE){
-  res = readRDS("save_summary/cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01_online_matching.rds")
-  
-  soglia = 25
-  plot_mat = res$template$Xi_mean #template$Xi_mean
-  sel_colums = which(colSums(plot_mat) > soglia )
-  plot_mat = plot_mat[,sel_colums]
-  
-  max_plot_mat = max(plot_mat, na.rm = TRUE)
-  K_plot = ncol(plot_mat)
-  
-  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
-  green_breaks = seq(soglia, max_plot_mat + eps_break, length.out = length(mycol) + 1)
-  breaks_xi = c(0, soglia, green_breaks[-1])
-  image( 1:K_plot, 1:Ttot,
-         t(plot_mat),
-         col = c("blue", mycol),
-         breaks = breaks_xi,
-         xlab = "Topics",
-         ylab = "Time",
-         main = "Xi_aligned_mean",
-         axes = FALSE )
-  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
-       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
-       cex.axis = 0.7 )
-  axis(1, at = seq(1, K_plot, length.out = min(K_plot, 10)), 
-       labels = round(seq(1, K_plot, length.out = min(K_plot, 10))),
-       cex.axis = 0.7)
-  box()
-  fields::image.plot(
-    1:K_plot, 1:Ttot,
-    t(plot_mat),
-    col = c("blue", mycol),
-    breaks = breaks_xi,
-    legend.only = TRUE,
-    horizontal = FALSE,
-    legend.width = 1.2,            # controls legend thickness
-    legend.shrink = 0.8,           # smaller legend
-    legend.mar = 8.5,                # margin from image
-    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
-  )
-  
-}
-
-
 # Save result -------------------------------------------------------------
 out = list(
   meta = list(
@@ -470,3 +425,159 @@ cat("\nSaved online matching object:\n", basename(out_file), "\n", sep = "")
 cat("Final number of consensus columns: ", length(template$count), "\n", sep = "")
 cat("Match counts per column:\n")
 print(template$count)
+
+# Plots and analysis -------------------------------------------------------------
+if(FALSE){
+  res = readRDS("save_summary/cfg001_r10_delta_1e00_beta0_1em01_gamma0_1em01_sigma0_1em01_online_matching.rds")
+  
+  ## Xi mean plot -------------------------------------------------------------
+  soglia = 25
+  plot_mat = res$Xi_online_mean
+  sel_colums = which(colSums(plot_mat) > soglia )
+  plot_mat = plot_mat[,sel_colums]
+  
+  max_plot_mat = max(plot_mat, na.rm = TRUE)
+  K_plot = ncol(plot_mat)
+  
+  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
+  green_breaks = seq(soglia, max_plot_mat + eps_break, length.out = length(mycol) + 1)
+  breaks_xi = c(0, soglia, green_breaks[-1])
+  image( 1:K_plot, 1:Ttot,
+         t(plot_mat),
+         col = c("blue", mycol),
+         breaks = breaks_xi,
+         xlab = "Topics",
+         ylab = "Time",
+         main = "< Xi >",
+         axes = FALSE )
+  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
+       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
+       cex.axis = 0.7 )
+  axis(1, at = seq(1, K_plot, length.out = min(K_plot, 10)), 
+       labels = round(seq(1, K_plot, length.out = min(K_plot, 10))),
+       cex.axis = 0.7)
+  box()
+  fields::image.plot(
+    1:K_plot, 1:Ttot,
+    t(plot_mat),
+    col = c("blue", mycol),
+    breaks = breaks_xi,
+    legend.only = TRUE,
+    horizontal = FALSE,
+    legend.width = 1.2,            # controls legend thickness
+    legend.shrink = 0.8,           # smaller legend
+    legend.mar = 8.5,                # margin from image
+    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
+  )
+  ## Xi and Lambda paired plot (all) -------------------------------------------------------------
+  ymax_topic = max( res$Lambda_online_mean )
+  ymax_xi = max( res$Xi_online_mean )
+  Kest = ncol(res$Xi_online_mean)
+  
+  if(save_img)
+    pdf("img/Lambda_Xi_paired_all.pdf",width = width, height = height)
+  for(l in 1:Kest){
+    par(mfrow = c(1,2), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+    barplot( height = res$Lambda_online_mean[,l], 
+             names.arg = as.character(1:V),
+             las = 1, col = "darkred", border = NA,
+             xlab = "Word",
+             main = paste0("Topic: ",l), ylab = "Prob.", ylim = c(0,ymax_topic),
+             cex.names = 0.5 )
+    barplot( height = res$Xi_online_mean[,l], 
+             names.arg = as.character(1:Ttot),
+             las = 1, col = "darkgreen", border = NA,
+             xlab = "Time",
+             main = paste0("Xi: ",l), ylab = "Intensity", ylim = c(0,ymax_xi),
+             cex.names = 0.5 )
+  }
+  if(save_img)
+    dev.off()
+  ## Xi and Lambda paired plot (selected) -------------------------------------------------------------
+  sel_cols = which(apply(res$Xi_online_mean, 2, max) > 25)
+  sel_Lambda = res$Lambda_online_mean[,sel_cols]
+  sel_Xi = res$Xi_online_mean[,sel_cols]
+  
+  ymax_topic = max( sel_Lambda )
+  ymax_xi = max( sel_Xi )
+  K_sel = ncol( sel_Xi )
+  
+  if(save_img)
+    pdf("img/Lambda_Xi_paired_sel.pdf",width = width, height = height)
+  for(l in 1:K_sel){
+    par(mfrow = c(1,2), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+    barplot( height = sel_Lambda[,l], 
+             names.arg = as.character(1:V),
+             las = 1, col = "darkred", border = NA,
+             xlab = "Word",
+             main = paste0("Topic: ",l), ylab = "Prob.", ylim = c(0,ymax_topic),
+             cex.names = 0.5 )
+    barplot( height = sel_Xi[,l], 
+             names.arg = as.character(1:Ttot),
+             las = 1, col = "darkgreen", border = NA,
+             xlab = "Time",
+             main = paste0("Xi: ",l), ylab = "Intensity", ylim = c(0,ymax_xi),
+             cex.names = 0.5 )
+  }
+  if(save_img)
+    dev.off()
+  
+  ## Analysis ----------------------------------------------------------------
+  r = 10
+  Presidents_all <- read.csv("../data/Presidents_all.csv")
+  data = read.table(paste0("../data/SpeechData_top",r,".txt"))
+  colnames(data) = Presidents_all[,2]
+  data = as.matrix(data)
+  vocab = rownames(data)
+  if(is.null(vocab))
+    vocab = as.character(seq_len(nrow(data)))
+  
+  if(!requireNamespace("wordcloud", quietly = TRUE))
+    stop("Package 'wordcloud' is required for the analysis plots.")
+  
+  if(save_img)
+    pdf("img/Lambda_Xi_wordcloud_sel.pdf", width = width, height = height)
+  
+  for(l in seq_len(K_sel)) {
+    
+    top_idx = which( sel_Lambda[, l] > quantile(sel_Lambda[, l],0.9) )
+    par(mfrow = c(1,3), mar = c(3,3,2,1), mgp = c(2,0.5,0), bty = "l")
+    # Word cloud: word size proportional to Lambda weight.
+    wordcloud::wordcloud(
+      words = vocab[top_idx],
+      freq = sel_Lambda[top_idx, l],
+      scale = c(4, 0.8),
+      min.freq = min(sel_Lambda[top_idx, l]),
+      max.words = 50,
+      random.order = FALSE,
+      ordered.colors = TRUE,
+      rot.per = 0,
+      colors = rep("darkred", length(top_idx))
+    )
+    title(main = paste0("Word cloud: ", l), line = -1)
+    
+    barplot(
+      height = sel_Lambda[, l],
+      names.arg = vocab,
+      las = 1, col = "darkred", border = NA,
+      xlab = "Word",
+      main = paste0("Topic: ", l), ylab = "Prob.",
+      ylim = c(0, ymax_topic),
+      cex.names = 0.5
+    )
+    barplot(
+      height = sel_Xi[, l],
+      names.arg = as.character(1:Ttot),
+      las = 1, col = "darkgreen", border = NA,
+      xlab = "Time",
+      main = paste0("Xi: ", l), ylab = "Intensity",
+      ylim = c(0, ymax_xi),
+      cex.names = 0.5
+    )
+  }
+  
+  if(save_img)
+    dev.off()
+
+}
+
