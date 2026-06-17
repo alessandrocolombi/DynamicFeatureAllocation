@@ -41,7 +41,7 @@ seed = 22123
 
 # Fixed dimensions of the dynamic model with centers.
 H = 10
-M0 = 3
+M0 = 7
 
 # Static Poisson-NMF initialization.
 static_nstart = 20
@@ -51,7 +51,7 @@ zeta_floor = 0.2
 zeta_strength = 30
 
 # Grid: quantities that vary across parallel runs.
-gamma_all = c(0.001,0.01,0.1,1,10)
+gamma_all = c(0.001,0.01,0.1)
 delta0_centers_all = c(0.001,0.1,1,10)
 
 params_grid = expand.grid(
