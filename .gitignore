@@ -7,3 +7,6 @@
 *.Rdat
 *.eps
 Scripts/SpeechDataset/save/
+Scripts/SpeechDataset/centers_save/
+Scripts/SpeechDataset/centers_save/
+/logs/
