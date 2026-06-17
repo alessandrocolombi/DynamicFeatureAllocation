@@ -4,7 +4,7 @@ wd_unicatt = "C:/Users/alessandro.colombi/"
 wd_g100 = "/g100/home/userexternal/acolombi/"
 wd_bocconi = "/home/colombi/"
 wd_vec = c(wd_pc,wd_unicatt,wd_g100,wd_bocconi)
-choose_wd = wd_vec[1] # <--- modify here
+choose_wd = wd_vec[4] # <--- modify here
 wd = paste0(choose_wd,"DynamicFeatureAllocation/Scripts/SpeechDataset")
 setwd(wd)
 
@@ -17,7 +17,7 @@ library(parallel)
 avail_cores = parallel::detectCores(logical = TRUE)
 if(is.na(avail_cores))
   avail_cores = 1L
-n_cores = min(4, avail_cores) # <---
+n_cores = 30 # <---
 
 # Read data ---------------------------------------------------------------
 
