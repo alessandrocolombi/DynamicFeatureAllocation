@@ -87,12 +87,11 @@ UpdateOmega = FALSE
 print = TRUE
 
 # MCMC control.
-niter = 100#5000
-nburn = 10#5000
-thin  = 1#10
+niter = 5000
+nburn = 5000
+thin  = 10
 
 # Output control.
-save_all_chain = TRUE
 save_dir = file.path(wd, "centers_save")
 log_dir = file.path(save_dir, "logs")
 output_dir = save_dir
@@ -105,7 +104,6 @@ if(identical(Sys.getenv("SD_CENTER_PARALLEL_SMOKE"), "1")){
   niter = 2
   nburn = 0
   thin = 1
-  save_all_chain = FALSE
   save_dir = file.path(tempdir(), "centers_parallel_smoke")
   log_dir = file.path(save_dir, "logs")
   output_dir = save_dir
@@ -262,7 +260,7 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
                               UpdateCenters, UpdateOmega,
                               print, seed,
                               niter, nburn, thin,
-                              output_dir, log_dir, save_dir, save_all_chain,
+                              output_dir, log_dir, save_dir,
                               static_nstart, static_niter, eps_init){
   cfg = as.list(as.data.frame(cfg, stringsAsFactors = FALSE))
   cfg$gamma = as.numeric(cfg$gamma)
@@ -273,17 +271,13 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
     stop("Invalid configuration: gamma and delta0_centers must be positive finite scalars")
   
   tag = make_config_tag(cfg, cfg_id, r, M0, H)
-  pdf_file = file.path(output_dir, paste0(tag, ".pdf"))
   log_file = file.path(log_dir, paste0(tag, ".log"))
   fit_file = file.path(save_dir, paste0(tag, ".rds"))
   setup_file = file.path(save_dir, paste0(tag, "_setup.rds"))
   chain_seed = seed + cfg_id
   
   log_open = FALSE
-  pdf_open = FALSE
   on.exit({
-    if(pdf_open)
-      try(grDevices::dev.off(), silent = TRUE)
     if(log_open)
       try(sink(), silent = TRUE)
   }, add = TRUE)
@@ -352,36 +346,17 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
     cat("Unique M values:", paste(unique(fit$M), collapse = ", "), "\n")
     cat("Unique Mstar values:", paste(unique(fit$Mstar), collapse = ", "), "\n")
     
-    if(save_all_chain){
-      saveRDS(fit, file = fit_file)
-      saveRDS(list(
-        tuning_options = tuning_options,
-        param_DTM_centers = param_DTM_centers,
-        init_DTM_centers = init_DTM_centers,
-        static_init = static_init
-      ), file = setup_file)
-    } else {
-      grDevices::pdf(pdf_file, width = 11, height = 8.5)
-      pdf_open = TRUE
-      par(mar = c(1,1,1,1))
-      plot.new()
-      text(0.02, 0.98,
-           labels = paste("Run completed",
-                          paste0("tag: ",tag),
-                          paste0("gamma: ",cfg$gamma),
-                          paste0("delta0_centers: ",cfg$delta0_centers),
-                          paste0("saved iterations: ",length(fit$M)),
-                          sep = "\n"),
-           adj = c(0,1))
-    }
+    saveRDS(fit, file = fit_file)
+    saveRDS(list(
+      tuning_options = tuning_options,
+      param_DTM_centers = param_DTM_centers,
+      init_DTM_centers = init_DTM_centers,
+      static_init = static_init
+    ), file = setup_file)
     
     rm(fit, init_DTM_centers, param_DTM_centers)
     gc(verbose = FALSE)
     
-    if(pdf_open){
-      try(grDevices::dev.off(), silent = TRUE)
-      pdf_open = FALSE
-    }
     if(log_open){
       try(sink(), silent = TRUE)
       log_open = FALSE
@@ -394,7 +369,6 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
       delta0_centers = cfg$delta0_centers,
       fit_file = fit_file,
       setup_file = setup_file,
-      pdf_file = pdf_file,
       log_file = log_file,
       status = "success",
       error_message = NA_character_
@@ -424,7 +398,6 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
       delta0_centers = cfg$delta0_centers,
       fit_file = fit_file,
       setup_file = setup_file,
-      pdf_file = pdf_file,
       log_file = log_file,
       status = "failed",
       error_message = conditionMessage(e)
@@ -453,7 +426,7 @@ parallel::clusterExport(
     "UpdateCenters", "UpdateOmega",
     "print", "seed",
     "niter", "nburn", "thin",
-    "output_dir", "log_dir", "save_dir", "save_all_chain",
+    "output_dir", "log_dir", "save_dir",
     "static_nstart", "static_niter", "eps_init",
     "rfunctions_path", "rcpp_path",
     "params_grid",
@@ -508,7 +481,6 @@ results = parallel::parLapplyLB(cl, seq_len(nrow(params_grid)), function(cfg_id)
     output_dir = output_dir,
     log_dir = log_dir,
     save_dir = save_dir,
-    save_all_chain = save_all_chain,
     static_nstart = static_nstart,
     static_niter = static_niter,
     eps_init = eps_init
@@ -542,8 +514,6 @@ for(i in seq_len(nrow(results_df))){
   cat("fit_rds:   ", fmt_path(results_df$fit_file[i]), "\n", sep = "")
   cat("setup_rds: ", fmt_path(results_df$setup_file[i]), "\n", sep = "")
   cat("log_file:  ", fmt_path(results_df$log_file[i]), "\n", sep = "")
-  if(!save_all_chain || identical(results_df$status[i], "failed"))
-    cat("pdf_file:  ", fmt_path(results_df$pdf_file[i]), "\n", sep = "")
 }
 
 cat(sprintf("[%s] END whole script: %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "SD_fit_center_parallel.R"))
