@@ -16,6 +16,7 @@
 #include "mysample.h"
 
 #include "FC.h"
+#include "ClusTopic.h"
 
 
 using namespace Rcpp;
@@ -428,6 +429,98 @@ Rcpp::List GibbsSampler_DTM_c(const int& niter, const int& nburn, const int& thi
 // --------------------------------------------------------------------------------------------
 // Test functions
 // --------------------------------------------------------------------------------------------
+
+namespace {
+
+double get_double_or_default(const Rcpp::List& x, const char* name, const double& default_value)
+{
+	if(x.containsElementNamed(name))
+		return Rcpp::as<double>(x[name]);
+	return default_value;
+}
+
+int get_int_or_default(const Rcpp::List& x, const char* name, const int& default_value)
+{
+	if(x.containsElementNamed(name))
+		return Rcpp::as<int>(x[name]);
+	return default_value;
+}
+
+bool get_bool_or_default(const Rcpp::List& x, const char* name, const bool& default_value)
+{
+	if(x.containsElementNamed(name))
+		return Rcpp::as<bool>(x[name]);
+	return default_value;
+}
+
+ClusTopicParams read_ClusTopic_params(const Rcpp::List& param_ClusTopic)
+{
+	ClusTopicParams param;
+	param.a_phi      = get_double_or_default(param_ClusTopic, "a_phi", param.a_phi);
+	param.b_phi      = get_double_or_default(param_ClusTopic, "b_phi", param.b_phi);
+	param.delta0     = get_double_or_default(param_ClusTopic, "delta0", param.delta0);
+	param.omega      = get_double_or_default(param_ClusTopic, "omega", param.omega);
+	param.a_omega    = get_double_or_default(param_ClusTopic, "a_omega", param.a_omega);
+	param.b_omega    = get_double_or_default(param_ClusTopic, "b_omega", param.b_omega);
+	param.var_phi    = get_double_or_default(param_ClusTopic, "var_phi", param.var_phi);
+	param.var_delta  = get_double_or_default(param_ClusTopic, "var_delta", param.var_delta);
+	param.mstar_max  = (unsigned int)get_int_or_default(param_ClusTopic, "mstar_max", param.mstar_max);
+	param.UpdateZeta = get_bool_or_default(param_ClusTopic, "UpdateZeta", param.UpdateZeta);
+	param.UpdateOmega = get_bool_or_default(param_ClusTopic, "UpdateOmega", param.UpdateOmega);
+	return param;
+}
+
+std::vector<VecCol> read_Zeta_old(const Rcpp::List& Zeta_old_list)
+{
+	std::vector<VecCol> Zeta_old(Zeta_old_list.size());
+	for(int m = 0; m < Zeta_old_list.size(); m++)
+		Zeta_old[m] = Rcpp::as<VecCol>(Zeta_old_list[m]);
+	return Zeta_old;
+}
+
+Rcpp::List wrap_VecCol_vector(const std::vector<VecCol>& x)
+{
+	Rcpp::List out(x.size());
+	for(int m = 0; m < x.size(); m++)
+		out[m] = Rcpp::wrap(x[m]);
+	return out;
+}
+
+} // anonymous namespace
+
+
+// [[Rcpp::export]]
+Rcpp::List sample_ClusTopic_partition_c(const unsigned int& seed, const MatCol& Lambda_star,
+                                        const Rcpp::List& Zeta_old_list,
+                                        const Rcpp::List& param_ClusTopic)
+{
+	sample::GSL_RNG engine(seed);
+	std::vector<VecCol> Zeta_old = read_Zeta_old(Zeta_old_list);
+	ClusTopicParams param = read_ClusTopic_params(param_ClusTopic);
+	ClusTopicUpdate out = sample_ClusTopic_partition(engine, Lambda_star, Zeta_old, param);
+
+	return Rcpp::List::create(
+		Rcpp::Named("c") = out.c,
+		Rcpp::Named("M") = out.M,
+		Rcpp::Named("Mstar") = out.Mstar,
+		Rcpp::Named("omega") = out.omega,
+		Rcpp::Named("Zeta") = wrap_VecCol_vector(out.Zeta),
+		Rcpp::Named("aux") = Rcpp::List::create(
+			Rcpp::Named("c_raw") = out.aux.c_raw,
+			Rcpp::Named("allocation_prob") = out.aux.allocation_prob,
+			Rcpp::Named("cluster_size") = out.aux.cluster_size,
+			Rcpp::Named("A") = out.aux.A,
+			Rcpp::Named("mstar_prob") = out.aux.mstar_prob,
+			Rcpp::Named("log_mstar_prob") = out.aux.log_mstar_prob,
+			Rcpp::Named("phi") = out.aux.phi,
+			Rcpp::Named("delta") = wrap_VecCol_vector(out.aux.delta),
+			Rcpp::Named("log_acc_zeta") = out.aux.log_acc_zeta,
+			Rcpp::Named("accept_zeta") = out.aux.accept_zeta,
+			Rcpp::Named("omega_shape") = out.aux.omega_shape,
+			Rcpp::Named("omega_rate") = out.aux.omega_rate
+		)
+	);
+}
 
 
 // [[Rcpp::export]]

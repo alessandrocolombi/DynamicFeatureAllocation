@@ -8,6 +8,12 @@ choose_wd = wd_vec[1] # <--- modify here
 wd = paste0(choose_wd,"DynamicFeatureAllocation/Scripts/SpeechDataset")
 setwd(wd)
 
+# Plot options -------------------------------------------------------------
+eps_break = .Machine$double.eps
+mycol = hcl.colors(n = 100, palette = "Greens", rev = TRUE)
+save_img = FALSE
+width = 12; height = 6
+
 # Functions ---------------------------------------------------------------
 source("./../../R/Rfunctions.R")
 Rcpp::sourceCpp("./../../src/RcppFunctions.cpp")
@@ -241,9 +247,13 @@ for(i in seq_along(fit_files)) {
   
   # Total number of distinct topics
   K_tr = fit_summary$K_it
-  par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
-  plot( K_tr, xlab = "Iter.", ylab = paste0("K"), type = "l" )
   
+  if(save_img)
+    pdf("img/SD_Ktotal_tr.pdf", width=width, height=height)
+  par(mfrow = c(1,1), mar = c(3,2.55,1,1), mgp=c(1.5,0.5,0), bty = "l", las = 1 ,cex = 2)
+  plot( K_tr, xlab = "Iteration", ylab = paste0("K"), type = "l" )
+  if(save_img)
+    dev.off()
   ## Active features matrix  ------------------------------------------------------------------
   
   Zmat_list  = lapply(fit_summary$topic_objs, function(z) z$Activity)
@@ -319,31 +329,47 @@ for(i in seq_along(fit_files)) {
   })
   Cor <- Reduce(`+`, Cor_mat_list)/length(Cor_mat_list)
   
-  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
-  image( 1:Ttot, 1:Ttot, 
-         Cor,   
-         col = mycol,    
-         xlab = "Time", 
-         ylab = "Time",
-         main = "Cor",
-         axes = FALSE )
-  axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
-       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
-       cex.axis = 0.7 )
-  axis(2, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
-       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
-       cex.axis = 0.7)
-  box()
-  fields::image.plot(
-    1:Ttot, 1:Ttot, Cor,
-    col = mycol,
-    legend.only = TRUE,
-    horizontal = FALSE,
-    legend.width = 1.2,            # controls legend thickness
-    legend.shrink = 0.8,           # smaller legend
-    legend.mar = 8.5,                # margin from image
-    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
-  )
+  pres_tick_idx = c(1,7,14,20,26,32,38,44,50,55,Ttot)
+  pres_tick_lab = substr(as.character(Presidents_all[pres_tick_idx, 2]), 1, 4)
+
+
+    if(save_img)
+      pdf("img/SD_Corr_matrix.pdf", width=10, height=8)
+    layout(matrix(c(1, 2), nrow = 1), widths = c(1, 0.08))
+    par(mar = c(2.4,2.75,0.6,0), mgp=c(2,0.5,0), cex = 2, las = 1)
+    image( 1:Ttot, 1:Ttot, 
+           Cor,   
+           col = mycol,    
+           xlab = "", 
+           ylab = "",
+           main = "",
+           axes = FALSE,
+           asp = 1 )
+    axis(1, at = pres_tick_idx, labels = FALSE, tck = -0.015)
+    axis(2, at = pres_tick_idx, labels = pres_tick_lab, , tck = -0.015, las = 1, cex.axis = 0.9)
+    text(
+      x = pres_tick_idx,
+      y = par("usr")[3] - 0.012 * diff(par("usr")[3:4]),
+      labels = pres_tick_lab,
+      srt = 45,
+      adj = 1,
+      xpd = NA,
+      cex = 0.9
+    )
+    # box()
+    par(mar = c(2,0,0,0.5))
+    fields::image.plot(
+      1:Ttot, 1:Ttot, Cor,
+      col = mycol,
+      legend.only = TRUE,
+      horizontal = FALSE,
+      legend.width = 0.9,
+      legend.shrink = 0.78,
+      legend.mar = 2.2,
+      legend.args = list(text = " ", side = 3, line = 0.2, cex = 0.8)
+    )
+  if(save_img)
+    dev.off()
   ## Unweighted pairwise similarity matrix ------------------------------------------------------------------
   
   Adj_bin_mat_list = lapply(Zmat_list, function(z) z%*%t(z) )
@@ -377,32 +403,56 @@ for(i in seq_along(fit_files)) {
   ## Mean values --------------------------------------------------------------------
   
   meanRes <- fit_summary$meanRes
+  word_idx = seq_len(V)
+  bar_width = 0.38
+  offset = 0.22
   
-  par(mfrow = c(1,1), mar = c(3.5,3.5,2,8), mgp=c(2,0.5,0))
-  image( 1:Ttot, 1:V, 
-         meanRes,   
-         col = mycol,    
-         xlab = "Time", 
-         ylab = "Words",
-         main = paste0("< Estimated Mean >"),
-         axes = FALSE )
-  axis(1, at = seq(1, Ttot, length.out = min(Ttot, 10)), 
-       labels = round(seq(1, Ttot, length.out = min(Ttot, 10))),
-       cex.axis = 0.7 )
-  axis(2, at = seq(1, V, length.out = min(H, 10)), 
-       labels = round(seq(1, V, length.out = min(H, 10))),
-       cex.axis = 0.7)
-  box()
-  fields::image.plot(
-    1:Ttot, 1:V, meanRes,
-    col = mycol,
-    legend.only = TRUE,
-    horizontal = FALSE,
-    legend.width = 1.2,            # controls legend thickness
-    legend.shrink = 0.8,           # smaller legend
-    legend.mar = 8.5,                # margin from image
-    legend.args = list(text = " ", side = 3, line = 1, cex = 0.8)
-  )
+  if(save_img)
+    pdf("img/Mean_values_compare.pdf", width = width, height = height)
+  
+  for(t in 1:Ttot){
+    par(mfrow = c(1,1), mar = c(4,4,2,1), mgp=c(2,0.5,0), bty = "l")
+    
+    plot(
+      NA, NA,
+      xlim = c(0.5, V + 0.5),
+      ylim = c(0, max(data[, t],meanRes[t, ]) ),
+      xlab = "Word",
+      ylab = "Count / Mean",
+      main = paste0("Time = ", t),
+      xaxt = "n"
+    )
+    
+    rect(
+      xleft = word_idx - offset - bar_width/2,
+      ybottom = 0,
+      xright = word_idx - offset + bar_width/2,
+      ytop = meanRes[t, ],
+      col = "darkred",
+      border = NA
+    )
+    rect(
+      xleft = word_idx + offset - bar_width/2,
+      ybottom = 0,
+      xright = word_idx + offset + bar_width/2,
+      ytop = data[, t],
+      col = "black",
+      border = NA
+    )
+    
+    axis(1, at = word_idx, labels = as.character(word_idx), cex.axis = 0.45)
+    legend(
+      "topright",
+      legend = c("Estimated mean", "Observed data"),
+      fill = c("darkred", "black"),
+      bty = "n",
+      cex = 0.9
+    )
+    box()
+  }
+  
+  if(save_img)
+    dev.off()
   ## Lambda values --------------------------------------------------------------------
   it = 950
   ymax_topic = max(Lambda_fit[[it]])

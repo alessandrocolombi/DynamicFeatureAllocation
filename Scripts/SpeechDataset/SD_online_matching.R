@@ -4,7 +4,7 @@ wd_unicatt = "C:/Users/alessandro.colombi/"
 wd_g100 = "/g100/home/userexternal/acolombi/"
 wd_bocconi = "/home/colombi/"
 wd_vec = c(wd_pc, wd_unicatt, wd_g100, wd_bocconi)
-choose_wd = wd_vec[4] # <--- modify here if needed
+choose_wd = wd_vec[1] # <--- modify here if needed
 wd = paste0(choose_wd, "DynamicFeatureAllocation/Scripts/SpeechDataset")
 setwd(wd)
 
@@ -502,27 +502,37 @@ if(FALSE){
   ymax_xi = max( sel_Xi )
   K_sel = ncol( sel_Xi )
   
-  if(save_img)
-    pdf("img/Lambda_Xi_paired_sel.pdf",width = width, height = height)
+  par(mfrow = c(2,5), mar = c(1,4,1,1), mgp=c(2,0.5,0), bty = "l")
+  # L'ho salvato a mano come SD_TopicXi_all_1 e SD_TopicXi_all_2
+  # Dimensioni 20x8
   for(l in 1:K_sel){
-    par(mfrow = c(1,2), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
     barplot( height = sel_Lambda[,l], 
-             names.arg = as.character(1:V),
+             names.arg = "",#as.character(1:V),
              las = 1, col = "darkred", border = NA,
-             xlab = "Word",
-             main = paste0("Topic: ",l), ylab = "Prob.", ylim = c(0,ymax_topic),
+             # xlab = "Word",ylab = "Prob.",
+             ylim = c(0,ymax_topic),
+             cex.axis = 2,
              cex.names = 0.5 )
+    title(
+      main = paste0("k = ", l),
+      cex.main = 2.5,
+      line = -2
+    )
     barplot( height = sel_Xi[,l], 
-             names.arg = as.character(1:Ttot),
+             names.arg = "",  #as.character(1:Ttot),
              las = 1, col = "darkgreen", border = NA,
-             xlab = "Time",
-             main = paste0("Xi: ",l), ylab = "Intensity", ylim = c(0,ymax_xi),
-             cex.names = 0.5 )
+             # xlab = "Time", ylab = "Intensity",
+             ylim = c(0,ymax_xi),
+             cex.axis = 2,
+             cex.names = 1.5 )
+    title(
+      main = paste0("k = ", l),
+      cex.main = 2.5,
+      line = -2
+    )
   }
-  if(save_img)
-    dev.off()
   
-  ## Analysis ----------------------------------------------------------------
+  ## Cloud + Lambda + Xi (selected) ----------------------------------------------------------------
   r = 10
   Presidents_all <- read.csv("../data/Presidents_all.csv")
   data = read.table(paste0("../data/SpeechData_top",r,".txt"))
@@ -578,6 +588,48 @@ if(FALSE){
   
   if(save_img)
     dev.off()
+  
+  ## Cloud only (all words) ----------------------------------------------------------------
+  top_idx = 1:V
+  
+  if(save_img)
+    pdf("img/_wordcloud_full_sel.pdf", width = width, height = height)
+  
+  for(l in seq_len(K_sel)) {
+    
+    par(mfrow = c(1,1), mar = c(3,3,2,1), mgp = c(2,0.5,0), bty = "l")
+    wordcloud::wordcloud(
+      words = vocab[top_idx],
+      freq = sel_Lambda[top_idx, l],
+      scale = c(4, 0.8),
+      min.freq = min(sel_Lambda[top_idx, l]),
+      max.words = 50,
+      random.order = FALSE,
+      ordered.colors = TRUE,
+      rot.per = 0,
+      colors = rep("darkred", length(top_idx))
+    )
+  }
+  
+  if(save_img)
+    dev.off()
 
+  ## Normalized xi_t ---------------------------------------------------------
+  sel_cols = which(apply(res$Xi_online_mean, 2, max) > soglia)
+  par(mfrow = c(5,6), mar = c(1,3,2,1), mgp=c(2,0.5,0), bty = "l")
+  for(t in 1:Ttot){
+    xi_t = res$Xi_online_mean[t,sel_cols]
+    xi_t_norm = unname(xi_t/sum(xi_t))
+    barplot( height = xi_t_norm, 
+             names.arg = as.character(1:length(sel_cols)),
+             las = 1, col = "darkgreen", border = NA,
+             xlab = "", ylab = "Prop.", 
+             main = Presidents_all[t,2], #paste0("t ",t), 
+             ylim = c(0,0.6),
+             cex.names = 0.5 )
+    
+  }
+  
+  
 }
 
