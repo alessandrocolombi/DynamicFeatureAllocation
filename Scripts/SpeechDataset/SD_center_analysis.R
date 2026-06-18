@@ -33,7 +33,7 @@ if(is.null(vocab))
 
 # Select chain ------------------------------------------------------------
 
-fit_basename = "cfg001_center_r10_M7_H10_gamma_1em03_delta0_1em03.rds"
+fit_basename = paste0("cfg003_center_r10_M3_H10_gamma_1em03_delta0_1em02_phi_1e00",".rds")
 downloads_dir = "C:/Users/colom/Downloads"
 local_save_dir = file.path(wd, "centers_save")
 
@@ -383,4 +383,41 @@ plot_center_wordcloud_hist = function(center_check, vocab,
 
 cat("Reading fit file:\n", normalizePath(fit_file, winslash = "/", mustWork = TRUE), "\n", sep = "")
 fit = readRDS(fit_file)
+
+
+
+View(fit)
+
+m = 1
+Kt_tr = sapply(fit$Xi, function(Xi_it_list) apply(Xi_it_list[[m]], 2, function(x) length(which(x > 0))) )
+Kt_tr = t(Kt_tr)
+
+it = 5000
+Kt_tr[it,]
+fit$Xi[[it]][[m]]
+fit$S[[it]][[m]]
+fit$U[[it]][[m]]
+
+
+par(mfrow = c(1,2), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+plot( fit$t_sigma_gamma, xlab = "Iter.", ylab = "t", type = "l" )
+plot( log(fit$t_sigma_gamma), xlab = "Iter.", ylab = "log(t)", type = "l" )
+
+
+par(mfrow = c(3,3), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+for(t in 1:Ttot){
+  plot( Kt_tr[,t], xlab = "Iter.", ylab = paste0("K",t), type = "l" )
+}
+
+# Total number of distinct topics
+K_tr = sapply(fit$Xi, function(Xi_it){
+  idx_list = lapply(1:H, function(l) find_indices(Xi_it[l,]))
+  total <- sum(vapply(idx_list, function(x) length(x[[1]]), integer(1)))
+  total
+} )
+
+par(mfrow = c(1,1), mar = c(3,3,1,1), mgp=c(2,0.5,0), bty = "l")
+plot( K_tr, xlab = "Iter.", ylab = paste0("K"), type = "l" )
+
+
  

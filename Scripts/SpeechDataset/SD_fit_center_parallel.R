@@ -50,9 +50,9 @@ static_niter = 500
 eps_init = 1e-8
 
 # Grid: quantities that vary across parallel runs.
-gamma_all = c(0.001,0.01)
-delta0_centers_all = c(0.001,0.01)
-phi_centers_all = c(1,0.001)
+gamma_all = c(1e-5,1e-4,1e-3,1e-2)
+delta0_centers_all = c(0.01)
+phi_centers_all = c(1)
 
 params_grid = expand.grid(
   gamma = gamma_all,
@@ -65,7 +65,7 @@ params_grid = expand.grid(
 # Fixed process hyperparameters.
 # The C++ sampler uses gamma/M internally because M is fixed here.
 sigma = 0.1
-beta  = 0.1
+beta  = 1
 
 # Fixed center-clustering hyperparameters.
 omega = 1
