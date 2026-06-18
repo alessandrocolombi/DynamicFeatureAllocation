@@ -44,13 +44,11 @@ bool get_bool_or_default_centers(const Rcpp::List& x, const char* name, const bo
 ClusTopicParams read_ClusTopic_params_centers(const Rcpp::List& param)
 {
   ClusTopicParams clus;
-  clus.a_phi       = get_double_or_default_centers(param, "a_phi_centers", clus.a_phi);
-  clus.b_phi       = get_double_or_default_centers(param, "b_phi_centers", clus.b_phi);
+  clus.phi         = get_double_or_default_centers(param, "phi_centers", clus.phi);
   clus.delta0      = get_double_or_default_centers(param, "delta0_centers", clus.delta0);
   clus.omega       = get_double_or_default_centers(param, "omega", clus.omega);
   clus.a_omega     = get_double_or_default_centers(param, "a_omega", clus.a_omega);
   clus.b_omega     = get_double_or_default_centers(param, "b_omega", clus.b_omega);
-  clus.var_phi     = get_double_or_default_centers(param, "var_phi_centers", clus.var_phi);
   clus.var_delta   = get_double_or_default_centers(param, "var_delta_centers", clus.var_delta);
   clus.mstar_max   = (unsigned int)get_int_or_default_centers(param, "mstar_max", clus.mstar_max);
   clus.UpdateZeta  = get_bool_or_default_centers(param, "UpdateCenters", clus.UpdateZeta);
@@ -127,6 +125,9 @@ DTMcenterState read_DTMcenter_init(const Rcpp::List& init, const MatIntCol& D,
 
   if(state.Zeta.size() != state.M)
     throw std::runtime_error("Error in read_DTMcenter_init: fixed-M sampler requires length(Zeta0) == M0");
+  
+  for(unsigned int m = 0; m < state.M; m++)
+    state.Zeta[m] = split_ClusTopic_zeta(state.Zeta[m], param.clus.phi).zeta;
 
   if(init.containsElementNamed("U0")){
     state.U = read_MatCol_list(init["U0"]);

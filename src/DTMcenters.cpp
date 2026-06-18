@@ -584,6 +584,7 @@ Rcpp::List GibbsSampler_DTM_centers_c_core(const int& niter, const int& nburn, c
     Rcpp::Named("sigma") = param.sigma,
     Rcpp::Named("beta") = param.beta,
     Rcpp::Named("phi_process") = PROCESS_PHI,
+    Rcpp::Named("phi_centers") = param.clus.phi,
     Rcpp::Named("t_sigma_gamma") = t_sigma_gamma_mcmc,
     Rcpp::Named("centers_aux") = centers_aux_mcmc
   );

@@ -33,7 +33,7 @@ if(is.null(vocab))
 
 # Select chain ------------------------------------------------------------
 
-fit_basename = "cfg003_center_r10_M3_H10_gamma_1em01_delta0_1em03.rds"
+fit_basename = "cfg001_center_r10_M7_H10_gamma_1em03_delta0_1em03.rds"
 downloads_dir = "C:/Users/colom/Downloads"
 local_save_dir = file.path(wd, "centers_save")
 
@@ -50,7 +50,7 @@ if(!file.exists(fit_file))
 
 # Fallback initialization settings if setup is missing.
 seed = 22123
-M0 = 3
+M0 = 7
 static_nstart = 20
 static_niter = 500
 eps_init = 1e-8
@@ -383,46 +383,4 @@ plot_center_wordcloud_hist = function(center_check, vocab,
 
 cat("Reading fit file:\n", normalizePath(fit_file, winslash = "/", mustWork = TRUE), "\n", sep = "")
 fit = readRDS(fit_file)
-
-Zeta0 = get_initial_zeta(setup_file)
-center_check = compute_center_check(fit, Zeta0)
-center_update_diag = compute_center_update_diagnostics(fit)
-feature_trace = compute_feature_trace(fit)
-
-cat("Fit loaded\n")
-cat("Saved iterations:", center_check$meta$n_saved, "\n")
-cat("Number of centers:", center_check$meta$M_fit, "\n")
-cat("Vocabulary size:", center_check$meta$V, "\n")
-cat("Mean total number of features:", round(mean(feature_trace$K_total), 2), "\n")
-cat("Mean number of features by center:",
-    paste(round(colMeans(feature_trace$K_by_center), 2), collapse = ", "), "\n")
-
-cat("\nCenter-update diagnostics\n")
-if(is.null(center_update_diag)){
-  cat("fit$centers_aux is missing or empty. This usually means centers were not recorded.\n")
-} else if(identical(center_update_diag$update_recorded, FALSE)){
-  cat("centers_aux exists, but all entries are empty. This is consistent with UpdateCenters = FALSE.\n")
-} else {
-  zeta_update_summary = data.frame(
-    center = seq_along(center_update_diag$accept_rate),
-    accept_rate = round(center_update_diag$accept_rate, 6),
-    n_accepted = colSums(center_update_diag$accept_mat),
-    ever_accepted = center_update_diag$ever_accepted,
-    mean_cluster_size = round(center_update_diag$mean_cluster_size, 3),
-    median_log_acc = round(center_update_diag$median_log_acc, 3),
-    min_log_acc = round(center_update_diag$min_log_acc, 3),
-    max_log_acc = round(center_update_diag$max_log_acc, 3)
-  )
-  print(zeta_update_summary)
-}
-
-if(interactive()){
-  plot_feature_trace(feature_trace)
-  plot_center_check(center_check, vocab, top_n = V, order_vocab = FALSE)
-  plot_center_wordcloud_hist(center_check, vocab)
-}
-
-
-
-
-
+ 

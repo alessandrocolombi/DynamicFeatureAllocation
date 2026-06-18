@@ -12,11 +12,9 @@ void check_positive_finite(const double& x, const std::string& name)
 
 void check_ClusTopic_params(const ClusTopicParams& param)
 {
-  check_positive_finite(param.a_phi, "a_phi");
-  check_positive_finite(param.b_phi, "b_phi");
+  check_positive_finite(param.phi, "phi");
   check_positive_finite(param.delta0, "delta0");
   check_positive_finite(param.omega, "omega");
-  check_positive_finite(param.var_phi, "var_phi");
   check_positive_finite(param.var_delta, "var_delta");
 
   if(param.UpdateOmega){
@@ -191,9 +189,9 @@ VecCol logratio_to_simplex(const VecCol& eta)
   return delta;
 }
 
-double log_jacobian_phi_delta(const double& phi, const VecCol& delta)
+double log_jacobian_delta(const VecCol& delta)
 {
-  double res = std::log(phi);
+  double res{0.0};
   for(int v = 0; v < delta.size(); v++)
     res += std::log(delta(v));
 
@@ -224,7 +222,6 @@ double log_ClusTopic_dirichlet_density(const VecCol& lambda, const VecCol& zeta)
 
 double log_ClusTopic_allocated_zeta_full_conditional(const VecCol& A_m, const unsigned int& n_m,
                                                      const double& phi, const VecCol& delta,
-                                                     const double& a_phi, const double& b_phi,
                                                      const double& delta0)
 {
   if(n_m == 0)
@@ -233,13 +230,10 @@ double log_ClusTopic_allocated_zeta_full_conditional(const VecCol& A_m, const un
     throw std::runtime_error("Error in log_ClusTopic_allocated_zeta_full_conditional: A_m and delta have incompatible sizes");
 
   check_positive_finite(phi, "phi");
-  check_positive_finite(a_phi, "a_phi");
-  check_positive_finite(b_phi, "b_phi");
   check_positive_finite(delta0, "delta0");
   check_simplex_vector(delta, "delta");
 
-  double res = (a_phi - 1.0)*std::log(phi) - b_phi*phi;
-  res += (delta0 - 1.0)*delta.array().log().sum();
+  double res = (delta0 - 1.0)*delta.array().log().sum();
   res += (double)n_m*std::lgamma(phi);
 
   for(int v = 0; v < delta.size(); v++)
@@ -286,41 +280,33 @@ MatCol compute_ClusTopic_A(const MatCol& Lambda_star, const VecIntCol& c, const 
 }
 
 
-ClusTopicZetaDraw split_ClusTopic_zeta(const VecCol& zeta)
+ClusTopicZetaDraw split_ClusTopic_zeta(const VecCol& zeta, const double& phi)
 {
   if(zeta.size() <= 0)
     throw std::runtime_error("Error in split_ClusTopic_zeta: zeta is empty");
 
   check_zeta_vector(zeta, zeta.size());
+  check_positive_finite(phi, "phi");
 
   ClusTopicZetaDraw out;
-  out.zeta = zeta;
-  out.phi = zeta.sum();
-  if(out.phi <= 0.0 || !std::isfinite(out.phi))
-    throw std::runtime_error("Error in split_ClusTopic_zeta: invalid phi");
-
-  out.delta = zeta/out.phi;
+  out.phi = phi;
+  out.delta = zeta/zeta.sum();
   check_simplex_vector(out.delta, "delta");
+  out.zeta = out.phi*out.delta;
   return out;
 }
 
 
 ClusTopicZetaDraw sample_ClusTopic_prior_zeta(sample::GSL_RNG const & engine, const unsigned int& V,
-                                              const double& a_phi, const double& b_phi,
-                                              const double& delta0)
+                                              const double& phi, const double& delta0)
 {
   if(V <= 0)
     throw std::runtime_error("Error in sample_ClusTopic_prior_zeta: V must be positive");
-  check_positive_finite(a_phi, "a_phi");
-  check_positive_finite(b_phi, "b_phi");
+  check_positive_finite(phi, "phi");
   check_positive_finite(delta0, "delta0");
 
-  sample::rgamma rgamma;
   ClusTopicZetaDraw out;
-  out.phi = rgamma(engine, a_phi, 1.0/b_phi);
-  if(out.phi <= 0.0 || !std::isfinite(out.phi))
-    out.phi = std::numeric_limits<double>::min();
-
+  out.phi = phi;
   out.delta = sample_dirichlet_symmetric(engine, V, delta0);
   out.zeta = out.phi*out.delta;
   return out;
@@ -357,21 +343,17 @@ unsigned int sample_ClusTopic_Mstar(sample::GSL_RNG const & engine, const unsign
 
 ClusTopicZetaMH sample_ClusTopic_allocated_zeta(sample::GSL_RNG const & engine, const VecCol& zeta_old,
                                                 const VecCol& A_m, const unsigned int& n_m,
-                                                const double& a_phi, const double& b_phi,
-                                                const double& delta0,
-                                                const double& var_phi, const double& var_delta)
+                                                const double& phi, const double& delta0,
+                                                const double& var_delta)
 {
-  check_positive_finite(var_phi, "var_phi");
+  check_positive_finite(phi, "phi");
   check_positive_finite(var_delta, "var_delta");
 
   sample::rnorm rnorm;
   sample::runif runif;
 
-  ClusTopicZetaDraw old_draw = split_ClusTopic_zeta(zeta_old);
+  ClusTopicZetaDraw old_draw = split_ClusTopic_zeta(zeta_old, phi);
   VecCol eta_old = simplex_to_logratio(old_draw.delta);
-
-  double log_phi_prime = rnorm(engine, std::log(old_draw.phi), std::sqrt(var_phi));
-  double phi_prime = std::exp(log_phi_prime);
 
   VecCol eta_prime{eta_old};
   for(int v = 0; v < eta_prime.size(); v++)
@@ -379,13 +361,13 @@ ClusTopicZetaMH sample_ClusTopic_allocated_zeta(sample::GSL_RNG const & engine, 
 
   VecCol delta_prime = logratio_to_simplex(eta_prime);
 
-  double log_old = log_ClusTopic_allocated_zeta_full_conditional(A_m, n_m, old_draw.phi, old_draw.delta,
-                                                                 a_phi, b_phi, delta0);
-  double log_prime = log_ClusTopic_allocated_zeta_full_conditional(A_m, n_m, phi_prime, delta_prime,
-                                                                   a_phi, b_phi, delta0);
+  double log_old = log_ClusTopic_allocated_zeta_full_conditional(A_m, n_m, phi, old_draw.delta,
+                                                                 delta0);
+  double log_prime = log_ClusTopic_allocated_zeta_full_conditional(A_m, n_m, phi, delta_prime,
+                                                                   delta0);
 
-  log_old += log_jacobian_phi_delta(old_draw.phi, old_draw.delta);
-  log_prime += log_jacobian_phi_delta(phi_prime, delta_prime);
+  log_old += log_jacobian_delta(old_draw.delta);
+  log_prime += log_jacobian_delta(delta_prime);
 
   ClusTopicZetaMH out;
   out.log_acc = log_prime - log_old;
@@ -393,13 +375,13 @@ ClusTopicZetaMH sample_ClusTopic_allocated_zeta(sample::GSL_RNG const & engine, 
   double log_u = std::log(runif(engine));
   if(log_u < std::min(0.0, out.log_acc)){
     out.accepted = true;
-    out.phi = phi_prime;
+    out.phi = phi;
     out.delta = delta_prime;
-    out.zeta = phi_prime*delta_prime;
+    out.zeta = phi*delta_prime;
   }
   else{
     out.accepted = false;
-    out.phi = old_draw.phi;
+    out.phi = phi;
     out.delta = old_draw.delta;
     out.zeta = old_draw.zeta;
   }
@@ -481,29 +463,27 @@ ClusTopicUpdate sample_ClusTopic_partition(sample::GSL_RNG const & engine, const
   const unsigned int T_new = out.M + out.Mstar;
   out.Zeta.reserve(T_new);
   out.aux.delta.reserve(T_new);
-  out.aux.phi = VecCol::Zero(T_new);
+  out.aux.phi = param.phi;
   out.aux.log_acc_zeta = VecCol::Zero(out.M);
   out.aux.accept_zeta = VecUnsCol::Zero(out.M);
 
   // 7) Update allocated centers. If requested, each allocated zeta_m is moved
-  // with an MH step on (log phi_m, log-ratios(delta_m)); otherwise it is simply
-  // decomposed into phi_m and delta_m and copied to the output.
+  // with an MH step on log-ratios(delta_m), keeping the common phi fixed.
+  // Otherwise it is simply decomposed into delta_m and rescaled by phi.
   for(unsigned int m = 0; m < out.M; m++){
     if(param.UpdateZeta){
       ClusTopicZetaMH mh = sample_ClusTopic_allocated_zeta(engine, Zeta_alloc[m], out.aux.A.col(m),
                                                            out.aux.cluster_size(m),
-                                                           param.a_phi, param.b_phi, param.delta0,
-                                                           param.var_phi, param.var_delta);
+                                                           param.phi, param.delta0,
+                                                           param.var_delta);
       out.Zeta.push_back(mh.zeta);
-      out.aux.phi(m) = mh.phi;
       out.aux.delta.push_back(mh.delta);
       out.aux.log_acc_zeta(m) = mh.log_acc;
       out.aux.accept_zeta(m) = mh.accepted ? 1 : 0;
     }
     else{
-      ClusTopicZetaDraw draw = split_ClusTopic_zeta(Zeta_alloc[m]);
+      ClusTopicZetaDraw draw = split_ClusTopic_zeta(Zeta_alloc[m], param.phi);
       out.Zeta.push_back(draw.zeta);
-      out.aux.phi(m) = draw.phi;
       out.aux.delta.push_back(draw.delta);
     }
   }
@@ -511,9 +491,8 @@ ClusTopicUpdate sample_ClusTopic_partition(sample::GSL_RNG const & engine, const
   // 8) Refresh empty component parameters from the prior, since empty clusters
   // have no likelihood contribution.
   for(unsigned int mstar = 0; mstar < out.Mstar; mstar++){
-    ClusTopicZetaDraw draw = sample_ClusTopic_prior_zeta(engine, V, param.a_phi, param.b_phi, param.delta0);
+    ClusTopicZetaDraw draw = sample_ClusTopic_prior_zeta(engine, V, param.phi, param.delta0);
     out.Zeta.push_back(draw.zeta);
-    out.aux.phi(out.M + mstar) = draw.phi;
     out.aux.delta.push_back(draw.delta);
   }
 
@@ -586,7 +565,7 @@ ClusTopicUpdate sample_ClusTopic_partition_fixedM(sample::GSL_RNG const & engine
 
   out.Zeta.reserve(M);
   out.aux.delta.reserve(M);
-  out.aux.phi = VecCol::Zero(M);
+  out.aux.phi = param.phi;
   out.aux.log_acc_zeta = VecCol::Zero(M);
   out.aux.accept_zeta = VecUnsCol::Zero(M);
 
@@ -594,25 +573,22 @@ ClusTopicUpdate sample_ClusTopic_partition_fixedM(sample::GSL_RNG const & engine
     if(param.UpdateZeta && out.aux.cluster_size(m) > 0){
       ClusTopicZetaMH mh = sample_ClusTopic_allocated_zeta(engine, Zeta_old[m], out.aux.A.col(m),
                                                            out.aux.cluster_size(m),
-                                                           param.a_phi, param.b_phi, param.delta0,
-                                                           param.var_phi, param.var_delta);
+                                                           param.phi, param.delta0,
+                                                           param.var_delta);
       out.Zeta.push_back(mh.zeta);
-      out.aux.phi(m) = mh.phi;
       out.aux.delta.push_back(mh.delta);
       out.aux.log_acc_zeta(m) = mh.log_acc;
       out.aux.accept_zeta(m) = mh.accepted ? 1 : 0;
     }
     else if(param.UpdateZeta){
       // Empty fixed centers have no likelihood contribution.
-      ClusTopicZetaDraw draw = sample_ClusTopic_prior_zeta(engine, V, param.a_phi, param.b_phi, param.delta0);
+      ClusTopicZetaDraw draw = sample_ClusTopic_prior_zeta(engine, V, param.phi, param.delta0);
       out.Zeta.push_back(draw.zeta);
-      out.aux.phi(m) = draw.phi;
       out.aux.delta.push_back(draw.delta);
     }
     else{
-      ClusTopicZetaDraw draw = split_ClusTopic_zeta(Zeta_old[m]);
+      ClusTopicZetaDraw draw = split_ClusTopic_zeta(Zeta_old[m], param.phi);
       out.Zeta.push_back(draw.zeta);
-      out.aux.phi(m) = draw.phi;
       out.aux.delta.push_back(draw.delta);
     }
   }

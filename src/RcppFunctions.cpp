@@ -456,13 +456,11 @@ bool get_bool_or_default(const Rcpp::List& x, const char* name, const bool& defa
 ClusTopicParams read_ClusTopic_params(const Rcpp::List& param_ClusTopic)
 {
 	ClusTopicParams param;
-	param.a_phi      = get_double_or_default(param_ClusTopic, "a_phi", param.a_phi);
-	param.b_phi      = get_double_or_default(param_ClusTopic, "b_phi", param.b_phi);
+	param.phi        = get_double_or_default(param_ClusTopic, "phi", param.phi);
 	param.delta0     = get_double_or_default(param_ClusTopic, "delta0", param.delta0);
 	param.omega      = get_double_or_default(param_ClusTopic, "omega", param.omega);
 	param.a_omega    = get_double_or_default(param_ClusTopic, "a_omega", param.a_omega);
 	param.b_omega    = get_double_or_default(param_ClusTopic, "b_omega", param.b_omega);
-	param.var_phi    = get_double_or_default(param_ClusTopic, "var_phi", param.var_phi);
 	param.var_delta  = get_double_or_default(param_ClusTopic, "var_delta", param.var_delta);
 	param.mstar_max  = (unsigned int)get_int_or_default(param_ClusTopic, "mstar_max", param.mstar_max);
 	param.UpdateZeta = get_bool_or_default(param_ClusTopic, "UpdateZeta", param.UpdateZeta);

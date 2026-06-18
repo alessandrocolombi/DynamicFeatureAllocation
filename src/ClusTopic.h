@@ -20,13 +20,11 @@ using namespace Rcpp;
 
 struct ClusTopicParams
 {
-  double a_phi{1.0};   // shape hyparam. for phi
-  double b_phi{1.0};   // rate hyparam. for phi
-  double delta0{1.0};  // hyparam. for delta
+  double phi{1.0};     // fixed common concentration: zeta_m = phi * delta_m
+  double delta0{1.0};  // symmetric Dirichlet hyperparam. for delta_m
   double omega{1.0};   // hyparam. for Poisson distributed number of clusters
   double a_omega{1.0}; // shape hyparam. for omega
   double b_omega{1.0}; // rate hyparam. for omega
-  double var_phi{0.01}; // adaptive variance in proposal for phi
   double var_delta{0.01}; // adaptive variance in proposal for delta
   unsigned int mstar_max{100}; // truncation level
   bool UpdateZeta{true};
@@ -57,7 +55,7 @@ struct ClusTopicAux
   MatCol A;
   VecCol mstar_prob;
   VecCol log_mstar_prob;
-  VecCol phi;
+  double phi{1.0};
   std::vector<VecCol> delta;
   VecCol log_acc_zeta;
   VecUnsCol accept_zeta;
@@ -83,18 +81,16 @@ double log_ClusTopic_dirichlet_density(const VecCol& lambda, const VecCol& zeta)
 
 double log_ClusTopic_allocated_zeta_full_conditional(const VecCol& A_m, const unsigned int& n_m,
                                                      const double& phi, const VecCol& delta,
-                                                     const double& a_phi, const double& b_phi,
                                                      const double& delta0);
 
 VecUnsCol compute_ClusTopic_cluster_sizes(const VecIntCol& c, const unsigned int& M);
 
 MatCol compute_ClusTopic_A(const MatCol& Lambda_star, const VecIntCol& c, const unsigned int& M);
 
-ClusTopicZetaDraw split_ClusTopic_zeta(const VecCol& zeta);
+ClusTopicZetaDraw split_ClusTopic_zeta(const VecCol& zeta, const double& phi);
 
 ClusTopicZetaDraw sample_ClusTopic_prior_zeta(sample::GSL_RNG const & engine, const unsigned int& V,
-                                              const double& a_phi, const double& b_phi,
-                                              const double& delta0);
+                                              const double& phi, const double& delta0);
 
 unsigned int sample_ClusTopic_Mstar(sample::GSL_RNG const & engine, const unsigned int& M,
                                     const unsigned int& K, const double& omega,
@@ -103,9 +99,8 @@ unsigned int sample_ClusTopic_Mstar(sample::GSL_RNG const & engine, const unsign
 
 ClusTopicZetaMH sample_ClusTopic_allocated_zeta(sample::GSL_RNG const & engine, const VecCol& zeta_old,
                                                 const VecCol& A_m, const unsigned int& n_m,
-                                                const double& a_phi, const double& b_phi,
-                                                const double& delta0,
-                                                const double& var_phi, const double& var_delta);
+                                                const double& phi, const double& delta0,
+                                                const double& var_delta);
 
 ClusTopicUpdate sample_ClusTopic_partition(sample::GSL_RNG const & engine, const MatCol& Lambda_star,
                                            const std::vector<VecCol>& Zeta_old,

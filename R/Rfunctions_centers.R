@@ -6,12 +6,14 @@ set_param_DTM_centers = function(H,gamma,sigma,beta,
                                  var_phi_centers,var_delta_centers,mstar_max,
                                  UpdateDitl,UpdateS,UpdateLambda,UpdateXi,UpdateU,
                                  UpdateCenters,UpdateOmega,
-                                 seed,print){
+                                 seed,print,
+                                 phi_centers = 1){
   return(list(
     "H" = H,
     "gamma" = gamma,
     "sigma" = sigma,
     "beta" = beta,
+    "phi_centers" = phi_centers,
     "a_phi_centers" = a_phi_centers,
     "b_phi_centers" = b_phi_centers,
     "delta0_centers" = delta0_centers,
@@ -57,12 +59,15 @@ GibbsSampler_DTM_centers = function(niter,nburn,thin,data,param_DTM_centers,init
   Ttot = ncol(data)
 
   H = param_DTM_centers$H
+  if(is.null(param_DTM_centers$phi_centers))
+    param_DTM_centers$phi_centers = 1
+  
   if(H <= 1 || param_DTM_centers$gamma <= 0 || param_DTM_centers$beta <= 0 ||
      param_DTM_centers$sigma <= 0 || param_DTM_centers$sigma >= 1 ||
-     param_DTM_centers$a_phi_centers <= 0 || param_DTM_centers$b_phi_centers <= 0 ||
+     param_DTM_centers$phi_centers <= 0 ||
      param_DTM_centers$delta0_centers <= 0 || param_DTM_centers$omega <= 0 ||
      param_DTM_centers$a_omega <= 0 || param_DTM_centers$b_omega <= 0 ||
-     param_DTM_centers$var_phi_centers <= 0 || param_DTM_centers$var_delta_centers <= 0 ||
+     param_DTM_centers$var_delta_centers <= 0 ||
      param_DTM_centers$mstar_max < 0)
     stop("Invalid param_DTM_centers")
 

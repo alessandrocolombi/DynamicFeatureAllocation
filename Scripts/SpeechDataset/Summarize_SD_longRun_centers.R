@@ -16,6 +16,10 @@ setwd(wd)
 
 # Paths -------------------------------------------------------------------
 
+M_select = 7 # <--- choose 3 or 7
+if(!M_select %in% c(3,7))
+  stop("M_select must be either 3 or 7")
+
 downloads_dir = "C:/Users/colom/Downloads"
 local_save_dir = file.path(wd, "centers_save")
 summary_dir = file.path(wd, "centers_summary")
@@ -23,7 +27,8 @@ summary_dir = file.path(wd, "centers_summary")
 if(!dir.exists(summary_dir))
   dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
 
-summary_file = file.path(summary_dir, "centers_config_feature_summary.csv")
+summary_file = file.path(summary_dir,
+                         paste0("centers_config_feature_summary_M",M_select,".csv"))
 
 # Helpers ----------------------------------------------------------------
 
@@ -90,7 +95,15 @@ parse_center_fit_name = function(fit_name){
   )
 }
 
-summarize_center_fit_file = function(fit_file){
+make_center_summary_cols = function(prefix, M){
+  paste0(prefix, seq_len(M))
+}
+
+make_accept_summary_cols = function(M){
+  paste0("acc_center", seq_len(M), "_percent")
+}
+
+summarize_center_fit_file = function(fit_file, M_expected){
   fit_name = basename(fit_file)
   meta = parse_center_fit_name(fit_name)
   
@@ -102,6 +115,8 @@ summarize_center_fit_file = function(fit_file){
     
     K_by_center_mean = colMeans(feature_trace$K_by_center)
     M_fit = length(K_by_center_mean)
+    if(M_fit != M_expected)
+      stop("Expected M = ",M_expected," centers, but fit has M = ",M_fit)
     
     accept_by_center = rep(NA_real_, M_fit)
     if(!is.null(center_update_diag) &&
@@ -109,47 +124,54 @@ summarize_center_fit_file = function(fit_file){
       accept_by_center = 100*center_update_diag$accept_rate
     }
     
+    K_cols = as.data.frame(as.list(K_by_center_mean[seq_len(M_expected)]))
+    names(K_cols) = make_center_summary_cols("K", M_expected)
+    
+    acc_cols = as.data.frame(as.list(accept_by_center[seq_len(M_expected)]))
+    names(acc_cols) = make_accept_summary_cols(M_expected)
+    
     out = cbind(
       meta,
       data.frame(
         Ktot = mean(feature_trace$K_total),
-        K1 = K_by_center_mean[1],
-        K2 = K_by_center_mean[2],
-        K3 = K_by_center_mean[3],
-        acc_center1_percent = accept_by_center[1],
-        acc_center2_percent = accept_by_center[2],
-        acc_center3_percent = accept_by_center[3],
         stringsAsFactors = FALSE
-      )
+      ),
+      K_cols,
+      acc_cols
     )
     
     rm(fit, feature_trace, center_update_diag)
     gc(verbose = FALSE)
     out
   }, error = function(e){
+    K_cols = as.data.frame(as.list(rep(NA_real_, M_expected)))
+    names(K_cols) = make_center_summary_cols("K", M_expected)
+    
+    acc_cols = as.data.frame(as.list(rep(NA_real_, M_expected)))
+    names(acc_cols) = make_accept_summary_cols(M_expected)
+    
     cbind(
       meta,
       data.frame(
         Ktot = NA_real_,
-        K1 = NA_real_,
-        K2 = NA_real_,
-        K3 = NA_real_,
-        acc_center1_percent = NA_real_,
-        acc_center2_percent = NA_real_,
-        acc_center3_percent = NA_real_,
         stringsAsFactors = FALSE
-      )
+      ),
+      K_cols,
+      acc_cols
     )
   })
 }
 
-find_center_fit_files = function(){
+find_center_fit_files = function(M){
   fit_dirs = unique(c(downloads_dir, local_save_dir))
+  fit_pattern = paste0("^cfg[0-9]+_center_r10_M",M,
+                       "_H10_gamma_.*_delta0_.*\\.rds$")
+  
   fit_files = unlist(lapply(fit_dirs, function(d) {
     if(!dir.exists(d))
       return(character(0))
     list.files(d,
-               pattern = "^cfg[0-9]+_center_r10_M3_H10_gamma_.*_delta0_.*\\.rds$",
+               pattern = fit_pattern,
                full.names = TRUE)
   }))
   
@@ -162,30 +184,39 @@ format_latex_number = function(x){
   ifelse(is.na(x), "--", sprintf("%.3f", x))
 }
 
-make_latex_table = function(tab){
+make_latex_table = function(tab, M){
+  K_cols = make_center_summary_cols("K", M)
+  acc_cols = make_accept_summary_cols(M)
+  
+  header = c(
+    "config",
+    "$\\gamma$",
+    "$\\delta_0$",
+    "$K_{\\mathrm{tot}}$",
+    paste0("$K_",seq_len(M),"$"),
+    paste0("acc$_",seq_len(M),"$ (\\%)")
+  )
+  
   lines = c(
     "\\begin{table}[htbp]",
     "\\centering",
     "\\scriptsize",
-    "\\begin{tabular}{rrrrrrrrrr}",
+    paste0("\\begin{tabular}{",paste(rep("r", length(header)), collapse = ""),"}"),
     "\\hline",
-    "config & $\\gamma$ & $\\delta_0$ & $K_{\\mathrm{tot}}$ & $K_1$ & $K_2$ & $K_3$ & acc$_1$ (\\%) & acc$_2$ (\\%) & acc$_3$ (\\%) \\\\",
+    paste0(paste(header, collapse = " & "), " \\\\"),
     "\\hline"
   )
   
   body = apply(tab, 1, function(row){
-    paste0(
-      as.integer(row[["config_id"]]), " & ",
-      format_latex_number(as.numeric(row[["gamma"]])), " & ",
-      format_latex_number(as.numeric(row[["delta0_centers"]])), " & ",
-      format_latex_number(as.numeric(row[["Ktot"]])), " & ",
-      format_latex_number(as.numeric(row[["K1"]])), " & ",
-      format_latex_number(as.numeric(row[["K2"]])), " & ",
-      format_latex_number(as.numeric(row[["K3"]])), " & ",
-      format_latex_number(as.numeric(row[["acc_center1_percent"]])), " & ",
-      format_latex_number(as.numeric(row[["acc_center2_percent"]])), " & ",
-      format_latex_number(as.numeric(row[["acc_center3_percent"]])), " \\\\"
+    fields = c(
+      as.integer(row[["config_id"]]),
+      format_latex_number(as.numeric(row[["gamma"]])),
+      format_latex_number(as.numeric(row[["delta0_centers"]])),
+      format_latex_number(as.numeric(row[["Ktot"]])),
+      vapply(K_cols, function(x) format_latex_number(as.numeric(row[[x]])), character(1)),
+      vapply(acc_cols, function(x) format_latex_number(as.numeric(row[[x]])), character(1))
     )
+    paste0(paste(fields, collapse = " & "), " \\\\")
   })
   
   c(
@@ -193,33 +224,37 @@ make_latex_table = function(tab){
     body,
     "\\hline",
     "\\end{tabular}",
-    "\\caption{Summary of feature counts and center-update acceptance rates across center-model configurations.}",
-    "\\label{tab:center-config-summary}",
+    paste0("\\caption{Summary of feature counts and center-update acceptance rates across center-model configurations with $M = ",M,"$.}"),
+    paste0("\\label{tab:center-config-summary-M",M,"}"),
     "\\end{table}"
   )
 }
 
 # Run batch summary -------------------------------------------------------
 
-fit_files = find_center_fit_files()
+fit_files = find_center_fit_files(M_select)
 if(length(fit_files) == 0)
-  stop("No center fit .rds files found in Downloads or centers_save")
+  stop("No center fit .rds files found for M = ",M_select,
+       " in Downloads or centers_save")
 
-config_feature_summary = do.call(rbind, lapply(fit_files, summarize_center_fit_file))
+config_feature_summary = do.call(rbind, lapply(fit_files, summarize_center_fit_file,
+                                               M_expected = M_select))
 config_feature_summary = config_feature_summary[order(config_feature_summary$config_id),]
 
 output_cols = c("config_id","gamma","delta0_centers",
-                "Ktot","K1","K2","K3",
-                "acc_center1_percent","acc_center2_percent","acc_center3_percent")
+                "Ktot",
+                make_center_summary_cols("K", M_select),
+                make_accept_summary_cols(M_select))
 config_feature_summary = config_feature_summary[,output_cols]
 
 numeric_cols = c("gamma","delta0_centers",
-                 "Ktot","K1","K2","K3",
-                 "acc_center1_percent","acc_center2_percent","acc_center3_percent")
+                 "Ktot",
+                 make_center_summary_cols("K", M_select),
+                 make_accept_summary_cols(M_select))
 config_feature_summary[numeric_cols] =
   lapply(config_feature_summary[numeric_cols], function(x) round(x, 3))
 
 write.csv(config_feature_summary, file = summary_file, row.names = FALSE)
 
-latex_table_code = make_latex_table(config_feature_summary)
+latex_table_code = make_latex_table(config_feature_summary, M_select)
 cat(paste(latex_table_code, collapse = "\n"), "\n")

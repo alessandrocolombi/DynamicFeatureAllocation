@@ -41,22 +41,23 @@ seed = 22123
 
 # Fixed dimensions of the dynamic model with centers.
 H = 10
-M0 = 7
+M0 = 3
+M_static = min(M0, 4)
 
 # Static Poisson-NMF initialization.
 static_nstart = 20
 static_niter = 500
 eps_init = 1e-8
-zeta_floor = 0.2
-zeta_strength = 30
 
 # Grid: quantities that vary across parallel runs.
-gamma_all = c(0.001,0.01,0.1)
-delta0_centers_all = c(0.001,0.1,1,10)
+gamma_all = c(0.001,0.01)
+delta0_centers_all = c(0.001,0.01)
+phi_centers_all = c(1,0.001)
 
 params_grid = expand.grid(
   gamma = gamma_all,
   delta0_centers = delta0_centers_all,
+  phi_centers = phi_centers_all,
   KEEP.OUT.ATTRS = FALSE,
   stringsAsFactors = FALSE
 )
@@ -67,12 +68,9 @@ sigma = 0.1
 beta  = 0.1
 
 # Fixed center-clustering hyperparameters.
-a_phi_centers = 1
-b_phi_centers = 1
 omega = 1
 a_omega = 1
 b_omega = 1
-var_phi_centers = 0.01
 var_delta_centers = 0.01
 mstar_max = 0
 
@@ -181,8 +179,26 @@ fit_static_poisson_nmf = function(D, K, nstart = 10, niter = 500,
   )
 }
 
-build_center_init = function(static_init, H, Ttot, zeta_floor, zeta_strength){
-  M0 = nrow(static_init$Xi)
+safe_rdirichlet_vec = function(alpha){
+  alpha = as.numeric(alpha)
+  if(any(!is.finite(alpha)) || any(alpha <= 0))
+    stop("Dirichlet parameters must be positive and finite")
+  
+  x = rgamma(length(alpha), shape = alpha, rate = 1)
+  if(any(!is.finite(x)) || sum(x) <= 0){
+    x = rep(.Machine$double.xmin, length(alpha))
+    x[sample.int(length(alpha), 1)] = 1
+  }
+  x = pmax(x, .Machine$double.xmin)
+  x/sum(x)
+}
+
+build_center_init = function(static_init, M0, H, Ttot, phi_centers, delta0_centers,
+                             eps = 1e-8){
+  M_static = nrow(static_init$Xi)
+  if(M_static > M0)
+    stop("M_static cannot be larger than M0")
+  
   center_profiles = static_init$Lambda
   Xi_static = static_init$Xi
   
@@ -193,20 +209,26 @@ build_center_init = function(static_init, H, Ttot, zeta_floor, zeta_strength){
   
   for(m in seq_len(M0)){
     Xi0[[m]] = matrix(0L, nrow = H, ncol = Ttot)
-    Xi0[[m]][1,] = as.integer(round(Xi_static[m,]))
+    if(m <= M_static){
+      Xi0[[m]][1,] = as.integer(round(Xi_static[m,]))
+      center_profile = smooth_simplex(center_profiles[,m], eps = eps)
+    } else {
+      Xi0[[m]][1,] = 1L
+      center_profile = safe_rdirichlet_vec(rep(phi_centers*delta0_centers, nrow(center_profiles)))
+    }
     
     S0[[m]] = matrix(rgamma(n = H*Ttot, shape = 1, rate = 1),
                      nrow = H, ncol = Ttot)
     
-    Zeta0[[m]] = zeta_floor + zeta_strength * center_profiles[,m]
+    Zeta0[[m]] = phi_centers * center_profile
     
     Lambda0[[m]] = vector("list", H)
     for(l in seq_len(H)){
-      Lambda0[[m]][[l]] = replicate(Ttot, rdirichlet_vec(Zeta0[[m]]))
+      Lambda0[[m]][[l]] = replicate(Ttot, safe_rdirichlet_vec(Zeta0[[m]]))
     }
     
     for(t in seq_len(Ttot)){
-      Lambda0[[m]][[1]][,t] = center_profiles[,m]
+      Lambda0[[m]][[1]][,t] = center_profile
     }
   }
   
@@ -228,18 +250,21 @@ make_config_tag = function(cfg, cfg_id, r, M0, H){
     "_M",M0,
     "_H",H,
     "_gamma_",format_tag_value(cfg$gamma),
-    "_delta0_",format_tag_value(cfg$delta0_centers)
+    "_delta0_",format_tag_value(cfg$delta0_centers),
+    "_phi_",format_tag_value(cfg$phi_centers)
   )
 }
 
 # One shared static initialization for all configurations.
-static_init = fit_static_poisson_nmf(data, M0,
+static_init = fit_static_poisson_nmf(data, M_static,
                                      nstart = static_nstart,
                                      niter = static_niter,
                                      eps = eps_init,
                                      seed = seed)
 
 cat("Static Poisson-NMF center initialization completed\n")
+cat("M:", M0, "\n")
+cat("M_static:", M_static, "\n")
 cat("KL objective:", signif(static_init$loss, 5), "\n")
 cat("Center times:", paste(round(static_init$center_time, 2), collapse = ", "), "\n")
 cat("Center masses:", paste(round(rowSums(static_init$Xi), 2), collapse = ", "), "\n")
@@ -250,12 +275,11 @@ project_dir = normalizePath(file.path(wd, "..", ".."), winslash = "/", mustWork 
 rfunctions_path = file.path(project_dir, "R", "Rfunctions_centers.R")
 rcpp_path = file.path(project_dir, "src", "RcppFunctions_centers.cpp")
 
-run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
-                              static_init, zeta_floor, zeta_strength,
+run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0, M_static,
+                              static_init,
                               sigma, beta,
-                              a_phi_centers, b_phi_centers,
                               omega, a_omega, b_omega,
-                              var_phi_centers, var_delta_centers, mstar_max,
+                              var_delta_centers, mstar_max,
                               UpdateDitl, UpdateS, UpdateLambda, UpdateXi, UpdateU,
                               UpdateCenters, UpdateOmega,
                               print, seed,
@@ -265,10 +289,11 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
   cfg = as.list(as.data.frame(cfg, stringsAsFactors = FALSE))
   cfg$gamma = as.numeric(cfg$gamma)
   cfg$delta0_centers = as.numeric(cfg$delta0_centers)
+  cfg$phi_centers = as.numeric(cfg$phi_centers)
   
-  if(any(!is.finite(c(cfg$gamma, cfg$delta0_centers))) ||
-     cfg$gamma <= 0 || cfg$delta0_centers <= 0)
-    stop("Invalid configuration: gamma and delta0_centers must be positive finite scalars")
+  if(any(!is.finite(c(cfg$gamma, cfg$delta0_centers, cfg$phi_centers))) ||
+     cfg$gamma <= 0 || cfg$delta0_centers <= 0 || cfg$phi_centers <= 0)
+    stop("Invalid configuration: gamma, delta0_centers and phi_centers must be positive finite scalars")
   
   tag = make_config_tag(cfg, cfg_id, r, M0, H)
   log_file = file.path(log_dir, paste0(tag, ".log"))
@@ -285,37 +310,50 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
   result = tryCatch({
     set.seed(chain_seed)
     
-    init_DTM_centers = build_center_init(static_init, H, Ttot,
-                                         zeta_floor, zeta_strength)
+    init_DTM_centers = build_center_init(static_init, M0, H, Ttot,
+                                         cfg$phi_centers, cfg$delta0_centers,
+                                         eps = eps_init)
     
-    param_DTM_centers = set_param_DTM_centers(H,cfg$gamma,sigma,beta,
-                                              a_phi_centers,b_phi_centers,cfg$delta0_centers,
-                                              omega,a_omega,b_omega,
-                                              var_phi_centers,var_delta_centers,mstar_max,
-                                              UpdateDitl,UpdateS,UpdateLambda,UpdateXi,UpdateU,
-                                              UpdateCenters,UpdateOmega,
-                                              chain_seed,print)
+    param_DTM_centers = list(
+      H = H,
+      gamma = cfg$gamma,
+      sigma = sigma,
+      beta = beta,
+      phi_centers = cfg$phi_centers,
+      delta0_centers = cfg$delta0_centers,
+      omega = omega,
+      a_omega = a_omega,
+      b_omega = b_omega,
+      var_delta_centers = var_delta_centers,
+      mstar_max = mstar_max,
+      UpdateDitl = UpdateDitl,
+      UpdateS = UpdateS,
+      UpdateLambda = UpdateLambda,
+      UpdateXi = UpdateXi,
+      UpdateU = UpdateU,
+      UpdateCenters = UpdateCenters,
+      UpdateOmega = UpdateOmega,
+      seed = chain_seed,
+      print = print
+    )
     
     tuning_options = list(
       r = r,
       seed = chain_seed,
       H = H,
       M0 = M0,
+      M_static = M_static,
       static_nstart = static_nstart,
       static_niter = static_niter,
       eps_init = eps_init,
-      zeta_floor = zeta_floor,
-      zeta_strength = zeta_strength,
       gamma = cfg$gamma,
       sigma = sigma,
       beta = beta,
-      a_phi_centers = a_phi_centers,
-      b_phi_centers = b_phi_centers,
+      phi_centers = cfg$phi_centers,
       delta0_centers = cfg$delta0_centers,
       omega = omega,
       a_omega = a_omega,
       b_omega = b_omega,
-      var_phi_centers = var_phi_centers,
       var_delta_centers = var_delta_centers,
       mstar_max = mstar_max,
       UpdateDitl = UpdateDitl,
@@ -337,6 +375,9 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
     cat("tag:", tag, "\n")
     cat("gamma:", cfg$gamma, "\n")
     cat("delta0_centers:", cfg$delta0_centers, "\n")
+    cat("phi_centers:", cfg$phi_centers, "\n")
+    cat("M:", M0, "\n")
+    cat("M_static:", M_static, "\n")
     cat("niter:", niter, "nburn:", nburn, "thin:", thin, "\n")
     
     fit = GibbsSampler_DTM_centers(niter,nburn,thin,data,param_DTM_centers,init_DTM_centers)
@@ -367,6 +408,7 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
       tag = tag,
       gamma = cfg$gamma,
       delta0_centers = cfg$delta0_centers,
+      phi_centers = cfg$phi_centers,
       fit_file = fit_file,
       setup_file = setup_file,
       log_file = log_file,
@@ -386,6 +428,7 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
         paste0("seed = ",chain_seed),
         paste0("gamma = ",cfg$gamma),
         paste0("delta0_centers = ",cfg$delta0_centers),
+        paste0("phi_centers = ",cfg$phi_centers),
         conditionMessage(e)
       ),
       con = log_file
@@ -396,6 +439,7 @@ run_single_config = function(cfg, cfg_id, data, H, Ttot, r, M0,
       tag = tag,
       gamma = cfg$gamma,
       delta0_centers = cfg$delta0_centers,
+      phi_centers = cfg$phi_centers,
       fit_file = fit_file,
       setup_file = setup_file,
       log_file = log_file,
@@ -416,12 +460,11 @@ flush.console()
 parallel::clusterExport(
   cl,
   varlist = c(
-    "data", "H", "Ttot", "r", "M0",
-    "static_init", "zeta_floor", "zeta_strength",
+    "data", "H", "Ttot", "r", "M0", "M_static",
+    "static_init",
     "sigma", "beta",
-    "a_phi_centers", "b_phi_centers",
     "omega", "a_omega", "b_omega",
-    "var_phi_centers", "var_delta_centers", "mstar_max",
+    "var_delta_centers", "mstar_max",
     "UpdateDitl", "UpdateS", "UpdateLambda", "UpdateXi", "UpdateU",
     "UpdateCenters", "UpdateOmega",
     "print", "seed",
@@ -431,7 +474,7 @@ parallel::clusterExport(
     "rfunctions_path", "rcpp_path",
     "params_grid",
     "format_tag_value", "make_config_tag",
-    "build_center_init", "run_single_config"
+    "safe_rdirichlet_vec", "build_center_init", "run_single_config"
   ),
   envir = environment()
 )
@@ -453,17 +496,13 @@ results = parallel::parLapplyLB(cl, seq_len(nrow(params_grid)), function(cfg_id)
     Ttot = Ttot,
     r = r,
     M0 = M0,
+    M_static = M_static,
     static_init = static_init,
-    zeta_floor = zeta_floor,
-    zeta_strength = zeta_strength,
     sigma = sigma,
     beta = beta,
-    a_phi_centers = a_phi_centers,
-    b_phi_centers = b_phi_centers,
     omega = omega,
     a_omega = a_omega,
     b_omega = b_omega,
-    var_phi_centers = var_phi_centers,
     var_delta_centers = var_delta_centers,
     mstar_max = mstar_max,
     UpdateDitl = UpdateDitl,
@@ -489,7 +528,7 @@ results = parallel::parLapplyLB(cl, seq_len(nrow(params_grid)), function(cfg_id)
 
 results_df = do.call(rbind, lapply(results, as.data.frame))
 
-summary_file = file.path(output_dir, paste0("parallel_centers_summary_r",r,".csv"))
+summary_file = file.path(output_dir, paste0("parallel_centers_summary_r",r,"_M",M0,".csv"))
 
 write.csv(
   results_df,
